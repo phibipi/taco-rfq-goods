@@ -133,7 +133,7 @@ def admin_portal():
 
             # Buat DataFrame baru khusus untuk tampilan (View)
             # Kita hanya ambil kolom yang ketemu saja
-            display_cols = [c for c in [col_pr, col_desc, col_qty, col_uom] if c is not None]
+            display_cols = [c for c in [col_pr, col_desc, col_desc2, col_qty, col_uom] if c is not None]
             
             if not display_cols:
                 st.error("❌ Sistem tidak mengenali kolom di Excel Anda. Pastikan Header di baris ke-3.")
