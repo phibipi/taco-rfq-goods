@@ -270,7 +270,7 @@ def admin_portal():
 
             df_merged = pd.merge(
                 df_prices, 
-                df_master[['id_unique', 'pr_number', 'item_name', 'specification', 'qty', 'uom']], 
+                df_master[['id_unique', 'item_name', 'specification', 'qty', 'uom']], 
                 on='id_unique', 
                 how='left'
             )
