@@ -107,11 +107,9 @@ def admin_portal():
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
 
-            # --- INISIALISASI SESSION STATE ---
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
 
-            # --- FILTER DATA ---
             df_display = df_raw.copy()
             if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
                 df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
@@ -161,7 +159,7 @@ def admin_portal():
                                     del st.session_state[widget_key]
                                 st.rerun()
 
-                            # Build view from dict (source of truth)
+                            # Build view from dict — dict is always source of truth
                             df_view = df_group[
                                 ['ID_SISTEM', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             ].copy()
@@ -172,6 +170,28 @@ def admin_portal():
                             )
                             df_view = df_view.reset_index(drop=True)
 
+                            # ✅ STEP 1: Read edited_rows BEFORE rendering the widget
+                            # At this point widget_key still has last run's state
+                            prev_widget_state = st.session_state.get(widget_key, {})
+                            prev_edited_rows = prev_widget_state.get("edited_rows", {})
+                            for row_idx_str, changes in prev_edited_rows.items():
+                                row_idx = int(row_idx_str)
+                                if row_idx < len(df_view) and 'PILIH' in changes:
+                                    id_sistem = df_view.iloc[row_idx]['ID_SISTEM']
+                                    st.session_state['selected_items_dict'][id_sistem] = changes['PILIH']
+
+                            # ✅ STEP 2: Delete widget key so data_editor re-renders
+                            # cleanly from df_view (which now reflects updated dict)
+                            if widget_key in st.session_state:
+                                del st.session_state[widget_key]
+
+                            # ✅ STEP 3: Rebuild df_view with updated dict values
+                            df_view['PILIH'] = [
+                                st.session_state['selected_items_dict'].get(k, False)
+                                for k in df_view['ID_SISTEM']
+                            ]
+
+                            # ✅ STEP 4: Render fresh editor from clean df_view
                             st.data_editor(
                                 df_view,
                                 hide_index=True,
@@ -184,21 +204,6 @@ def admin_portal():
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM'],
                             )
 
-                            # ✅ KEY FIX: read widget state directly instead of edited_df.
-                            # edited_rows only contains rows the user actually changed,
-                            # so we don't accidentally overwrite other rows with stale values.
-                            widget_state = st.session_state.get(widget_key, {})
-                            edited_rows = widget_state.get("edited_rows", {})
-                            for row_idx_str, changes in edited_rows.items():
-                                row_idx = int(row_idx_str)
-                                if row_idx < len(df_view) and 'PILIH' in changes:
-                                    id_sistem = df_view.iloc[row_idx]['ID_SISTEM']
-                                    st.session_state['selected_items_dict'][id_sistem] = changes['PILIH']
-
-                # -------------------------------------------------------
-                # LANGKAH 2: REVIEW TABLE
-                # Renders after all editors synced above — always current.
-                # -------------------------------------------------------
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
 
