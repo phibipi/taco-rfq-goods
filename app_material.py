@@ -137,59 +137,72 @@ def admin_portal():
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item & Review Data")
-                st.info("Klik pada baris PR untuk melihat detail item. Data sudah difilter (Status: Open & Qty > 0).")
+                
+                # --- FITUR SEARCH BAR ---
+                search_query = st.text_input("🔍 Cari PR, Barang, atau Lokasi...", placeholder="Ketik nomor PR, nama sparepart, atau site (misal: Cikande)")
+                
+                st.info("Data dikelompokkan per Nomor PR. Klik baris untuk melihat detail.")
 
-                # 1. Urutan kolom sesuai request: QTY dulu baru UOM
+                # 1. Urutan kolom
                 cols_to_show = ['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM', 'LOCATION']
                 valid_cols = [c for c in cols_to_show if c in df_display.columns]
                 
                 all_edited_results = []
 
-                # 2. Kelompokkan per Nomor PR
-                grouped_pr = df_display['PR CODE'].unique()
+                # 2. Filter Data Berdasarkan Search Query
+                if search_query:
+                    # Mencari di kolom PR CODE, DESCRIPTION, atau LOCATION
+                    q = search_query.lower()
+                    mask = (
+                        df_display['PR CODE'].astype(str).str.lower().str.contains(q) |
+                        df_display['DESCRIPTION'].astype(str).str.lower().str.contains(q) |
+                        df_display['LOCATION'].astype(str).str.lower().str.contains(q)
+                    )
+                    df_to_show = df_display[mask]
+                else:
+                    df_to_show = df_display
 
-                for pr_no in grouped_pr:
-                    # Ambil data untuk PR ini
-                    df_pr_group = df_display[df_display['PR CODE'] == pr_no].copy()
-                    
-                    # Ambil informasi untuk Header Expander
-                    # Kita ambil baris pertama sebagai perwakilan info PR tersebut
-                    loc_val = df_pr_group['LOCATION'].iloc[0] if 'LOCATION' in df_pr_group.columns else "Unknown"
-                    desc_val = df_pr_group['DESCRIPTION'].iloc[0]
-                    
-                    # Judul Expander: No PR + Lokasi + Preview Barang
-                    header_text = f"📄 {pr_no} | 📍 {loc_val} | {desc_val[:40]}..."
-                    
-                    # expanded=False agar rapi (tidak otomatis terbuka)
-                    with st.expander(header_text, expanded=False):
-                        # Siapkan data untuk ditampilkan di tabel (tanpa kolom Location karena sudah ada di header)
-                        display_table_cols = [c for c in valid_cols if c != 'LOCATION']
-                        df_view = df_pr_group[display_table_cols].copy()
-                        df_view.insert(0, "PILIH", True) 
+                # 3. Kelompokkan per Nomor PR dari hasil filter
+                grouped_pr = df_to_show['PR CODE'].unique()
 
-                        edited_pr = st.data_editor(
-                            df_view,
-                            hide_index=True,
-                            use_container_width=True,
-                            column_config={
-                                "PILIH": st.column_config.CheckboxColumn(default=True),
-                                "QUANTITY": st.column_config.NumberColumn("QTY", format="%d"),
-                                "PR CODE": None, # Sembunyikan kolom PR Code di dalam tabel karena sudah ada di header
-                            },
-                            disabled=[c for c in display_table_cols],
-                            key=f"editor_{pr_no}"
-                        )
+                if len(grouped_pr) == 0:
+                    st.warning(f"Tidak ada data yang cocok dengan kata kunci '{search_query}'")
+                else:
+                    for pr_no in grouped_pr:
+                        df_pr_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
                         
-                        # Tambahkan kembali kolom PR CODE dan LOCATION ke hasil edit agar tidak hilang saat save
-                        edited_pr['PR CODE'] = pr_no
-                        edited_pr['LOCATION'] = loc_val
-                        all_edited_results.append(edited_pr)
+                        loc_val = df_pr_group['LOCATION'].iloc[0] if 'LOCATION' in df_pr_group.columns else "Unknown"
+                        desc_val = df_pr_group['DESCRIPTION'].iloc[0]
+                        
+                        header_text = f"📄 {pr_no} | 📍 {loc_val} | {desc_val[:40]}..."
+                        
+                        with st.expander(header_text, expanded=False):
+                            display_table_cols = [c for c in valid_cols if c != 'LOCATION']
+                            df_view = df_pr_group[display_table_cols].copy()
+                            df_view.insert(0, "PILIH", True) 
 
-                # Gabungkan hasil
+                            edited_pr = st.data_editor(
+                                df_view,
+                                hide_index=True,
+                                use_container_width=True,
+                                column_config={
+                                    "PILIH": st.column_config.CheckboxColumn(default=True),
+                                    "QUANTITY": st.column_config.NumberColumn("QTY", format="%d"),
+                                    "PR CODE": None, 
+                                },
+                                disabled=[c for c in display_table_cols],
+                                key=f"editor_{pr_no}_{search_query}" # Tambahkan search_query di key agar editor refresh saat cari
+                            )
+                            
+                            edited_pr['PR CODE'] = pr_no
+                            edited_pr['LOCATION'] = loc_val
+                            all_edited_results.append(edited_pr)
+
+                # 4. Gabungkan hasil
                 if all_edited_results:
                     final_df_all = pd.concat(all_edited_results)
                     final_items = final_df_all[final_df_all["PILIH"] == True]
-                    st.success(f"📦 Total {len(final_items)} item terpilih untuk diproses.")
+                    st.success(f"📦 Total {len(final_items)} item terpilih dari hasil pencarian.")
                 else:
                     final_items = pd.DataFrame()
                 
