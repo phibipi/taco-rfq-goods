@@ -147,14 +147,14 @@ def admin_portal():
                         
                         display_table_cols = ['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                         df_view = df_pr_group[display_table_cols].copy()
-                        df_view['unique_key'] = pr_no.astype(str) + "_" + df_view['DESCRIPTION'].astype(str)
                         
-                        # --- LOGIKA SINKRONISASI MEMORI (FIXED) ---
+                        # --- PERBAIKAN DI SINI ---
+                        df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
+                        
                         current_selections = []
                         for key in df_view['unique_key']:
                             if select_all_pr:
                                 st.session_state['selected_items_dict'][key] = True
-                            
                             status = st.session_state['selected_items_dict'].get(key, False)
                             current_selections.append(status)
                         
@@ -172,9 +172,9 @@ def admin_portal():
                             key=f"editor_{pr_no}"
                         )
                         
-                        # Simpan perubahan manual
                         for i, row in edited_pr.iterrows():
-                            item_key = pr_no.astype(str) + "_" + str(row['DESCRIPTION'])
+                            # --- DAN DI SINI ---
+                            item_key = str(pr_no) + "_" + str(row['DESCRIPTION'])
                             st.session_state['selected_items_dict'][item_key] = row['PILIH']
                         
                         edited_pr['PR CODE'] = pr_no
