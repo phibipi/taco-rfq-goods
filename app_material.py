@@ -143,6 +143,8 @@ def admin_portal():
                             df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False))
                     df_to_show = df_to_show[mask]
 
+                grouped_pr = df_to_show['PR CODE'].unique()
+
                 # --- RENDER LIST PR (LANGKAH 1) ---
                 with st.container(height=500, border=True):
                     for pr_no in grouped_pr:
