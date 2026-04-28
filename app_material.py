@@ -142,6 +142,9 @@ def admin_portal():
                             df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False))
                     df_to_show = df_to_show[mask]
 
+                if 'editor_version' not in st.session_state:
+                    st.session_state['editor_version'] = 0
+                    
                 # --- RENDER LIST PR (LANGKAH 1) ---
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
@@ -168,6 +171,8 @@ def admin_portal():
                             # Kita buat DataFrame view yang kolom 'PILIH'-nya diambil dari memori
                             df_view = df_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM', 'ID_SISTEM']].copy()
                             df_view.insert(0, "PILIH", [st.session_state['selected_items_dict'].get(k, False) for k in df_view['ID_SISTEM']])
+                            ver = st.session_state['editor_version']
+                            ed_key = f"ed_{pr_no}_v{ver}"
 
                             # 3. DATA EDITOR (TANPA RERUN DI DALAM LOOP)
                             # PENTING: Kita gunakan on_change untuk memproses data SETELAH user selesai klik
@@ -194,7 +199,8 @@ def admin_portal():
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
                 # TOMBOL UPDATE (Penting untuk sinkronisasi tampilan)
-                if st.button("🔄 Update Review (Klik setelah pilih-pilih)", type="secondary", use_container_width=True):
+                if st.button("🔄 UPDATE & SINKRONKAN TABEL", type="primary", use_container_width=True):
+                    st.session_state['editor_version'] += 1
                     st.rerun()
 
                 # LOGIKA PENGUNCIAN ITEM (BUKAN PER PR)
