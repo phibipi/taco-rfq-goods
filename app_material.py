@@ -244,32 +244,49 @@ def admin_portal():
     with tabs[1]:
         st.header("Price Comparison Analysis")
         df_prices = get_data("Price_Goods")
+    
         if df_prices.empty:
-            st.info("Belum ada penawaran masuk.")
+            st.info("Belum ada penawaran masuk dari vendor.")
         else:
             df_master = get_data("Master_Items")
-            # Gabungkan harga dengan detail nama barang
-            df_merged = pd.merge(df_prices, df_master[['id_unique', 'item_name', 'specification', 'qty', 'uom']], on='id_unique', how='left')
+        
+
+            df_merged = pd.merge(
+                df_prices, 
+                df_master[['id_unique', 'pr_number', 'item_name', 'specification', 'qty', 'uom']], 
+                on='id_unique', 
+                how='left'
+            )
+        
+        # --- PERBAIKAN DI SINI ---
+        # Cek apakah kolomnya bernama 'pr_number' atau 'pr_number_x' 
+        # (biasanya di sheet Price_Goods kamu pakai 'pr_number')
+            if 'pr_number' in df_merged.columns:
+                pr_list = df_merged['pr_number'].unique()
+                sel_pr = st.selectbox("Pilih Nomor PR:", pr_list)
             
-            pr_list = df_merged['pr_number'].unique()
-            sel_pr = st.selectbox("Pilih Nomor PR:", pr_list)
+                sub_comp = df_merged[df_merged['pr_number'] == sel_pr]
             
-            sub_comp = df_merged[df_merged['pr_number'] == sel_pr]
+            # Pivot table untuk perbandingan harga antar vendor
+            # Sesuaikan index dengan kolom yang ada: item_name, specification, qty, uom
+                pivot_df = sub_comp.pivot_table(
+                    index=['item_name', 'specification', 'qty', 'uom'],
+                    columns='vendor_email',
+                    values='unit_price',
+                    aggfunc='min'
+                ).reset_index()
             
-            pivot_df = sub_comp.pivot_table(
-                index=['item_name', 'specification', 'qty', 'uom'],
-                columns='vendor_email',
-                values='unit_price',
-                aggfunc='min'
-            ).reset_index()
-            
-            st.dataframe(pivot_df.style.highlight_min(axis=1, color='#d1fae5'), use_container_width=True)
+                st.write(f"### Perbandingan Harga PR: {sel_pr}")
+                st.dataframe(pivot_df.style.highlight_min(axis=1, color='#d1fae5'), use_container_width=True)
             
             # Fitur Download
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                pivot_df.to_excel(writer, index=False)
-            st.download_button("📥 Download Report Excel", output.getvalue(), f"Comparison_{sel_pr}.xlsx")
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    pivot_df.to_excel(writer, index=False)
+                st.download_button("📥 Download Report Excel", output.getvalue(), f"Comparison_{sel_pr}.xlsx")
+            else:
+                st.error("Kolom 'pr_number' tidak ditemukan di database. Silakan cek nama kolom di Google Sheets 'Price_Goods'.")
+                st.write("Kolom yang tersedia:", df_merged.columns.tolist())
 
 # --- VENDOR PORTAL ---
 def vendor_portal(email):
