@@ -98,7 +98,7 @@ def show_dashboard():
     else:
         vendor_portal(user['email'])
 
-# --- CALLBACK UNTUK CHECKBOX SATUAN ---
+# --- CALLBACK TETAP SAMA TAPI PAKAI ID DARI KOLOM NO ---
 def sync_checkbox(id_sistem, widget_key):
     st.session_state['selected_items_dict'][id_sistem] = st.session_state[widget_key]
 
@@ -110,8 +110,19 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
 
         if uploaded_file:
+            # Baca Excel, header ada di baris ke-3 (index 2)
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
+
+            # --- KUNCI UTAMA: Ambil ID dari kolom 'NO' ---
+            # Pastikan kolom 'NO' ada, kalau tidak ada kita pakai index sebagai cadangan
+            if 'NO' in df_raw.columns:
+                df_raw['ID_SISTEM'] = df_raw['NO'].astype(str)
+            else:
+                df_raw['ID_SISTEM'] = df_raw.index.astype(str)
+
+            if 'selected_items_dict' not in st.session_state:
+                st.session_state['selected_items_dict'] = {}
 
             df_display = df_raw.copy()
             if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
@@ -120,10 +131,6 @@ def admin_portal():
                     (df_raw['STATUS'].astype(str).str.strip() == 'Open') &
                     (df_raw['QUANTITY'] > 0)
                 ].copy()
-
-            df_display['ID_SISTEM'] = (
-                df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
-            )
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item")
@@ -156,7 +163,6 @@ def admin_portal():
                                     st.session_state['selected_items_dict'][k] = False
                                 st.rerun()
 
-                            # Headers
                             h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
                             h1.markdown("**✓**")
                             h2.markdown("**Description**")
@@ -164,18 +170,16 @@ def admin_portal():
                             h4.markdown("**Qty**")
                             h5.markdown("**UOM**")
 
-                            # Row Loop
                             for idx, item_row in df_group.iterrows():
                                 id_sistem = item_row['ID_SISTEM']
-                                widget_key = f"chk_{pr_no}_{idx}"
+                                # Widget key pakai id_sistem (kolom NO) agar abadi
+                                widget_key = f"chk_{id_sistem}"
                                 
-                                # Pastikan widget_key sinkron dengan dict
                                 if widget_key not in st.session_state:
                                     st.session_state[widget_key] = st.session_state['selected_items_dict'].get(id_sistem, False)
 
                                 col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
 
-                                # Checkbox dengan Callback
                                 col1.checkbox(
                                     label="select",
                                     key=widget_key,
@@ -189,12 +193,13 @@ def admin_portal():
                                 col4.write(item_row.get('QUANTITY', ''))
                                 col5.write(item_row.get('UOM', ''))
 
-                # --- LANGKAH 2 ---
+                # --- LANGKAH 2 (Review) ---
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
-                # Filter item yang BENAR-BENAR dicentang (True)
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
+                
+                # Filter final_items pakai ID_SISTEM (Kolom NO)
                 final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
 
                 if not final_items.empty:
@@ -206,11 +211,10 @@ def admin_portal():
                         )
                         if st.button("🚨 Reset Semua Pilihan"):
                             st.session_state['selected_items_dict'] = {}
-                            # Hapus semua state checkbox widget agar visual ikut reset
                             for k in list(st.session_state.keys()):
-                                if k.startswith("chk_"):
-                                    del st.session_state[k]
+                                if k.startswith("chk_"): del st.session_state[k]
                             st.rerun()
+                    
 
                     df_u = get_data("Users")
                     vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
