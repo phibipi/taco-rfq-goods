@@ -103,16 +103,36 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
         
         if uploaded_file:
+            # header=2 untuk baris ke-3
             df_raw = pd.read_excel(uploaded_file, header=2)
             
-            # 1. STANDARISASI: Paksa semua nama kolom jadi huruf besar & tanpa spasi tambahan
+            # 1. Standarisasi Nama Kolom
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # 2. FILTER STATUS OPEN
-            if 'STATUS' in df_raw.columns:
-                df_filtered = df_raw[df_raw['STATUS'].astype(str).str.contains('Open', case=False, na=False)].copy()
+            # 2. Cari Nama Kolom secara Dinamis (Flexible Mapping)
+            def find_col(keywords, df):
+                for col in df.columns:
+                    if any(key in col for key in keywords):
+                        return col
+                return None
+
+            col_status = find_col(['STATUS'], df_raw)
+            col_qty = find_col(['QUANTITY', 'QTY'], df_raw)
+
+            # 3. PROSES FILTER GANDA (Status Open & Qty > 0)
+            if col_status and col_qty:
+                # Pastikan Qty adalah angka (numeric)
+                df_raw[col_qty] = pd.to_numeric(df_raw[col_qty], errors='coerce').fillna(0)
+                
+                # Eksekusi Filter: Status mengandung 'Open' DAN Qty lebih besar dari 0
+                df_filtered = df_raw[
+                    (df_raw[col_status].astype(str).str.contains('Open', case=False, na=False)) & 
+                    (df_raw[col_qty] > 0)
+                ].copy()
+                
+                st.success(f"✅ Filter Berhasil: {len(df_filtered)} item (Status: Open & Qty > 0)")
             else:
-                st.warning("⚠️ Kolom STATUS tidak ditemukan, menampilkan semua data.")
+                st.warning("⚠️ Kolom STATUS atau QUANTITY tidak ditemukan. Menampilkan data apa adanya.")
                 df_filtered = df_raw.copy()
 
             st.subheader("📝 Langkah 1: Pilih Item & Review Data")
