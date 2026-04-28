@@ -293,8 +293,23 @@ def admin_portal():
                 ).reset_index()
             
                 st.write(f"### Perbandingan Harga PR: {sel_pr}")
-                st.dataframe(pivot_df.style.highlight_min(axis=1, color='#d1fae5'), use_container_width=True)
-            
+                # Pisahkan kolom teks (identitas) dan kolom angka (harga dari vendor)
+                identitas_cols = ['item_name', 'specification', 'qty', 'uom']
+                harga_cols = [c for c in pivot_df.columns if c not in identitas_cols]
+
+                if harga_cols:
+                    # Tampilkan dataframe dengan highlight hanya pada kolom harga
+                    st.dataframe(
+                        pivot_df.style.highlight_min(
+                            axis=1, 
+                            color='#d1fae5', 
+                            subset=harga_cols
+                        ), 
+                        use_container_width=True
+                    )
+                else:
+                    st.dataframe(pivot_df, use_container_width=True)
+                    
             # Fitur Download
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
