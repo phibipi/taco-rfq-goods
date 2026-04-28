@@ -103,19 +103,25 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
         
         if uploaded_file:
-            # header=2 artinya baris ke-3 (index 2) akan dianggap sebagai nama kolom
+            # header=2 artinya baris ke-3 di Excel
             df_raw = pd.read_excel(uploaded_file, header=2)
             
-            # Membersihkan baris yang benar-benar kosong (jika ada)
-            df_raw = df_raw.dropna(how='all')
+            # 1. Bersihkan nama kolom dari spasi di depan/belakang
+            df_raw.columns = [str(c).strip() for c in df_raw.columns]
             
-            # POKA-YOKE: Filter Status Open Otomatis
-            # Kita pakai .astype(str) untuk jaga-jaga kalau ada data non-string
-            if 'Status' in df_raw.columns:
-                df_filtered = df_raw[df_raw['Status'].astype(str).str.contains('Open', case=False, na=False)].copy()
+            # 2. Cek apakah kolom 'STATUS' (caps lock) ada
+            if 'STATUS' in df_raw.columns:
+                # Filter hanya yang mengandung kata 'Open'
+                df_filtered = df_raw[df_raw['STATUS'].astype(str).str.contains('Open', case=False, na=False)].copy()
+                st.success(f"✅ Berhasil memfilter {len(df_filtered)} data dengan status OPEN.")
             else:
-                st.warning("⚠️ Kolom 'Status' tidak ditemukan. Pastikan header ada di baris ke-3.")
+                # Jika tidak ada, tampilkan kolom apa saja yang terdeteksi biar kita gak nebak-nebak
+                st.error("❌ Kolom 'STATUS' tidak ditemukan!")
+                st.write("Kolom yang ada di file kamu adalah:", df_raw.columns.tolist())
                 df_filtered = df_raw.copy()
+            
+            # Tampilkan preview untuk Admin
+            st.dataframe(df_filtered, use_container_width=True)
             
             # Mapping Kolom sesuai Kebutuhan TACO
             # Sesuaikan string index dengan nama kolom asli di file excel kamu
