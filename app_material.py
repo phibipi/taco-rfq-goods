@@ -103,37 +103,48 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
         
         if uploaded_file:
-            # header=2 untuk baris ke-3
+            # 1. Baca data (header=2 untuk baris ke-3)
             df_raw = pd.read_excel(uploaded_file, header=2)
             
-            # 1. Standarisasi Nama Kolom
+            # 2. BERSIHKAN NAMA KOLOM (Spasi tak kasat mata sering jadi penyebab hilang)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # 2. Cari Nama Kolom secara Dinamis (Flexible Mapping)
+            # --- FITUR DEBUG (Hapus kalau sudah lancar) ---
+            with st.expander("🛠️ Debug Data (Klik jika tabel hilang)"):
+                st.write("Kolom terdeteksi:", df_raw.columns.tolist())
+                st.write("5 Baris pertama:", df_raw.head())
+            
+            # 3. CARI KOLOM DINAMIS
             def find_col(keywords, df):
                 for col in df.columns:
                     if any(key in col for key in keywords):
                         return col
                 return None
 
-            col_status = find_col(['STATUS'], df_raw)
-            col_qty = find_col(['QUANTITY', 'QTY'], df_raw)
+            c_status = find_col(['STATUS'], df_raw)
+            c_qty = find_col(['QUANTITY', 'QTY'], df_raw)
 
-            # 3. PROSES FILTER GANDA (Status Open & Qty > 0)
-            if col_status and col_qty:
-                # Pastikan Qty adalah angka (numeric)
-                df_raw[col_qty] = pd.to_numeric(df_raw[col_qty], errors='coerce').fillna(0)
-                
-                # Eksekusi Filter: Status mengandung 'Open' DAN Qty lebih besar dari 0
-                df_filtered = df_raw[
-                    (df_raw[col_status].astype(str).str.contains('Open', case=False, na=False)) & 
-                    (df_raw[col_qty] > 0)
-                ].copy()
-                
-                st.success(f"✅ Filter Berhasil: {len(df_filtered)} item (Status: Open & Qty > 0)")
+            # 4. PROSES FILTER (Dibuat lebih santai)
+            df_filtered = df_raw.copy()
+
+            if c_status:
+                # Filter status Open (Case Insensitive)
+                df_filtered = df_filtered[df_filtered[c_status].astype(str).str.contains('Open', case=False, na=False)]
+            
+            if c_qty:
+                # Ubah ke angka, yang error jadi 0
+                df_filtered[c_qty] = pd.to_numeric(df_filtered[c_qty], errors='coerce').fillna(0)
+                # Filter hanya yang > 0
+                df_filtered = df_filtered[df_filtered[c_qty] > 0]
+
+            # 5. CEK APAKAH HASIL FILTER KOSONG
+            if df_filtered.empty:
+                st.warning("⚠️ Data hilang setelah difilter! Cek apakah kolom STATUS mengandung kata 'Open' dan QTY lebih dari 0.")
+                # Tampilkan data aslinya biar Admin gak bingung
+                df_display = df_raw.head(10) 
             else:
-                st.warning("⚠️ Kolom STATUS atau QUANTITY tidak ditemukan. Menampilkan data apa adanya.")
-                df_filtered = df_raw.copy()
+                st.success(f"✅ Menampilkan {len(df_filtered)} item.")
+                df_display = df_filtered
 
             st.subheader("📝 Langkah 1: Pilih Item & Review Data")
             
