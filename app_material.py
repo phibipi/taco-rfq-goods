@@ -127,6 +127,7 @@ def admin_portal():
 
             col_pr = find_col(['PR CODE', 'NO. PR', 'PURCHASE REQUEST'], df_filtered)
             col_desc = find_col(['DESCRIPTION', 'NAMA BARANG', 'ITEM'], df_filtered)
+            col_desc2 = find_col(['DESCRIPTION 2'], df_filtered)
             col_qty = find_col(['QUANTITY', 'QTY'], df_filtered)
             col_uom = find_col(['UOM', 'SATUAN'], df_filtered)
 
