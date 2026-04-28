@@ -111,11 +111,11 @@ def show_dashboard():
         vendor_portal(user['email'])
 
 def admin_portal():
-    tabs = st.tabs(["📥 Import PR", "📊 Monitoring & Comparison", "🔍 History Search"])
+    tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History Search"])
     
     with tabs[0]:
-        st.header("Upload Purchase Request dari ERP")
-        uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
+        st.header("Upload Purchase Request Taconnect")
+        uploaded_file = st.file_uploader("Upload File Excel PR View dari Taconnect", type=['xlsx'])
         
         if uploaded_file:
             df_raw = pd.read_excel(uploaded_file, header=2)
@@ -135,8 +135,8 @@ def admin_portal():
                 df_display = df_raw.copy()
 
             if not df_display.empty:
-                st.subheader("📝 Langkah 1: Pilih Item & Review Data")
-                search_query = st.text_input("🔍 Cari PR, Barang, Spek, atau Lokasi...", placeholder="Ketik di sini...")
+                st.subheader("📝 Langkah 1: Pilih Item & Review List")
+                search_query = st.text_input("🔍 Cari No. PR, Nama Item, atau Lokasi...", placeholder="Ketik di sini...")
                 
                 # 2. Filter Search
                 if search_query:
@@ -164,21 +164,29 @@ def admin_portal():
                         header_text = f"📄 {pr_no} | 📍 {loc_val} | {df_pr_group['DESCRIPTION'].iloc[0][:40]}..."
                     
                         with st.expander(header_text, expanded=False):
-                            select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=f"all_{pr_no}")
-                        
+                            # Master Checkbox per PR
+                            sel_all_key = f"all_{pr_no}"
+                            select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=sel_all_key)
+                            
                             display_table_cols = ['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             df_view = df_pr_group[display_table_cols].copy()
-                        
-                        # --- PERBAIKAN DI SINI ---
                             df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
-                        
+                            
+                            # --- LOGIKA SINKRONISASI (FIXED) ---
                             current_selections = []
                             for key in df_view['unique_key']:
+                                # Jika "Select All" di klik ON, paksa semua True
                                 if select_all_pr:
                                     st.session_state['selected_items_dict'][key] = True
-                                status = st.session_state['selected_items_dict'].get(key, False)
-                                current_selections.append(status)
-                        
+                                # Jika "Select All" di klik OFF, paksa semua False (Ini fix untuk poin 2 kamu)
+                                elif not select_all_pr and st.session_state.get(f"prev_all_{pr_no}", False):
+                                    st.session_state['selected_items_dict'][key] = False
+                                
+                                current_selections.append(st.session_state['selected_items_dict'].get(key, False))
+                            
+                            # Simpan status "Select All" sebelumnya untuk deteksi perubahan ON ke OFF
+                            st.session_state[f"prev_all_{pr_no}"] = select_all_pr
+
                             df_view.insert(0, "PILIH", current_selections)
 
                             edited_pr = st.data_editor(
@@ -192,15 +200,11 @@ def admin_portal():
                                 disabled=display_table_cols,
                                 key=f"editor_{pr_no}"
                             )
-                        
+                            
+                            # Update memori setiap ada interaksi di tabel
                             for i, row in edited_pr.iterrows():
-                                # --- DAN DI SINI ---
                                 item_key = str(pr_no) + "_" + str(row['DESCRIPTION'])
                                 st.session_state['selected_items_dict'][item_key] = row['PILIH']
-                        
-                            edited_pr['PR CODE'] = pr_no
-                            edited_pr['LOCATION'] = loc_val
-                            all_edited_results.append(edited_pr)
 
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
@@ -211,23 +215,18 @@ def admin_portal():
                 final_items = df_display[df_display['unique_key'].isin(selected_keys)].copy()
 
                 if not final_items.empty:
-                    with st.expander("📋 Lihat Daftar Item Terpilih", expanded=True):
+                    with st.expander("📋 Daftar PR/Item yang dipilih", expanded=True):
                         summary_cols = ['PR CODE', 'LOCATION', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                         st.dataframe(final_items[summary_cols], hide_index=True, use_container_width=True)
                         st.info(f"Total: **{len(final_items)} item** terpilih.")
                 else:
-                    st.warning("Belum ada item yang dipilih.")
+                    st.warning("Belum ada PR/item yang dipilih.")
                 
                 # Vendor Selection
                 df_users = get_data("Users")
                 list_vendors = df_users[df_users['role'] == 'vendor']['vendor_name'].tolist()
-                
-                c1, c2 = st.columns([1, 4])
-                if c1.button("✅ Select All Vendors"): st.session_state['selected_vendors'] = list_vendors
-                if c2.button("🗑️ Clear Selection"): st.session_state['selected_vendors'] = []
-                
-                sel_vendors = st.multiselect("Pilih Vendor:", list_vendors, key='selected_vendors')
-                
+                sel_vendors = st.multiselect("Pilih Vendor Penerima Undangan:", list_vendors)
+                              
                 if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
                     if final_items.empty or not sel_vendors:
                         st.error("Gagal: Pilih minimal 1 item dan 1 vendor!")
