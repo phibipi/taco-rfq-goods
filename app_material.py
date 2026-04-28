@@ -192,7 +192,10 @@ def admin_portal():
                                 st.session_state['selected_items_dict'][row['ID_SISTEM']] = row['PILIH']
 
                 st.divider()
-                st.subheader("🎯 Langkah 2: Review & Assign Vendor")
+                col_title, col_btn = st.columns([4, 1])
+                col_title.subheader("🎯 Langkah 2: Review & Assign Vendor")
+                if col_btn.button("🔄 Refresh", use_container_width=True):
+                    st.rerun()
 
                 # ✅ This now always reflects edited_df from above
                 selected_keys = [
