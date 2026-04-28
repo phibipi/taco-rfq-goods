@@ -168,12 +168,18 @@ def admin_portal():
                                 id_sistem = item_row['ID_SISTEM']
                                 col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
 
+                                # --- PERBAIKAN DI SINI ---
                                 checked = col1.checkbox(
                                     label="select",
                                     value=st.session_state['selected_items_dict'].get(id_sistem, False),
                                     key=f"chk_{pr_no}_{idx}",
-                                    label_visibility="collapsed"
+                                    label_visibility="collapsed",
+                                    on_change=st.rerun  # <--- TAMBAHKAN INI agar Langkah 2 langsung muncul
                                 )
+                                
+                                # Update state setiap kali ada interaksi
+                                st.session_state['selected_items_dict'][id_sistem] = checked
+                                
                                 col2.write(item_row.get('DESCRIPTION', ''))
                                 col3.write(item_row.get('DESCRIPTION 2', ''))
                                 col4.write(item_row.get('QUANTITY', ''))
