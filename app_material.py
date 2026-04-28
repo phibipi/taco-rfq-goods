@@ -230,9 +230,15 @@ def admin_portal():
                                         access_rows.append([v_email, row.get('PR CODE',''), u_id, "Active"])
                             
                             if batch_save_data("Master_Items", master_rows) and batch_save_data("Access_Goods", access_rows):
-                                st.success(f"Berhasil! RFQ terkirim.")
-                                st.session_state['selected_items_dict'] = {} # Reset memori
-                                st.balloons()
+                                # Notifikasi sukses yang bersih tanpa animasi balon
+                                st.success(f"✅ RFQ Berhasil Terkirim: {len(final_items)} item telah dipublish ke {len(sel_vendors)} vendor.")
+                                
+                                # Reset keranjang memori agar siap untuk batch berikutnya
+                                st.session_state['selected_items_dict'] = {} 
+                                
+                                # Opsional: Tambahkan tombol untuk refresh halaman jika perlu
+                                if st.button("Refresh Halaman"):
+                                    st.rerun()
 
     # --- TAB 2: COMPARISON ---
     with tabs[1]:
