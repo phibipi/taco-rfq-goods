@@ -103,47 +103,59 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
         
         if uploaded_file:
-            # header=2 artinya baris ke-3 di Excel
             df_raw = pd.read_excel(uploaded_file, header=2)
             
-            # 1. Bersihkan nama kolom dari spasi di depan/belakang
-            df_raw.columns = [str(c).strip() for c in df_raw.columns]
+            # 1. STANDARISASI: Paksa semua nama kolom jadi huruf besar & tanpa spasi tambahan
+            df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # 2. Cek apakah kolom 'STATUS' (caps lock) ada
+            # 2. FILTER STATUS OPEN
             if 'STATUS' in df_raw.columns:
-                # Filter hanya yang mengandung kata 'Open'
                 df_filtered = df_raw[df_raw['STATUS'].astype(str).str.contains('Open', case=False, na=False)].copy()
-                st.success(f"✅ Berhasil memfilter {len(df_filtered)} data dengan status OPEN.")
             else:
-                # Jika tidak ada, tampilkan kolom apa saja yang terdeteksi biar kita gak nebak-nebak
-                st.error("❌ Kolom 'STATUS' tidak ditemukan!")
-                st.write("Kolom yang ada di file kamu adalah:", df_raw.columns.tolist())
+                st.warning("⚠️ Kolom STATUS tidak ditemukan, menampilkan semua data.")
                 df_filtered = df_raw.copy()
-            
-            # Tampilkan preview untuk Admin
-            st.dataframe(df_filtered, use_container_width=True)
-            
-            # Mapping Kolom sesuai Kebutuhan TACO
-            # Sesuaikan string index dengan nama kolom asli di file excel kamu
-            mapping = {
-                'PR Code': 'pr_number', 'Location': 'location', 'Priority Status': 'priority',
-                'Description': 'item_name', 'Description 2': 'specification', 
-                'UoM': 'uom', 'Quantity': 'qty', 'Create Date': 'pr_date'
-            }
-            
-            # Pastikan kolom ada sebelum difilter
-            available_cols = [c for c in mapping.keys() if c in df_filtered.columns]
-            df_view = df_filtered[available_cols].copy()
-            
+
             st.subheader("📝 Langkah 1: Pilih Item & Review Data")
-            df_view.insert(0, "Pilih", True) # Default Select All
             
-            edited_items = st.data_editor(
-                df_view, hide_index=True, use_container_width=True,
-                column_config={"Pilih": st.column_config.CheckboxColumn(default=True)}
-            )
+            # 3. MAPPING FLEXIBLE: Cari kolom yang mirip-mirip namanya
+            # Ini biar kalau di Excel namanya 'PR CODE' atau 'NO. PR' tetap tertangkap
+            def find_col(keywords, df):
+                for col in df.columns:
+                    if any(key in col for key in keywords):
+                        return col
+                return None
+
+            col_pr = find_col(['PR CODE', 'NO. PR', 'PURCHASE REQUEST'], df_filtered)
+            col_desc = find_col(['DESCRIPTION', 'NAMA BARANG', 'ITEM'], df_filtered)
+            col_qty = find_col(['QUANTITY', 'QTY'], df_filtered)
+            col_uom = find_col(['UOM', 'SATUAN'], df_filtered)
+
+            # Buat DataFrame baru khusus untuk tampilan (View)
+            # Kita hanya ambil kolom yang ketemu saja
+            display_cols = [c for c in [col_pr, col_desc, col_qty, col_uom] if c is not None]
             
-            final_items = edited_items[edited_items['Pilih'] == True].drop(columns=['Pilih'])
+            if not display_cols:
+                st.error("❌ Sistem tidak mengenali kolom di Excel Anda. Pastikan Header di baris ke-3.")
+                st.write("Kolom yang terbaca:", df_raw.columns.tolist())
+            else:
+                df_view = df_filtered[display_cols].copy()
+                df_view.insert(0, "PILIH", True) # Masukkan checkbox di awal
+
+                # TAMPILKAN EDITOR
+                edited_items = st.data_editor(
+                    df_view,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "PILIH": st.column_config.CheckboxColumn(help="Centang untuk kirim ke vendor", default=True),
+                        # Kolom lainnya diset disabled agar Admin tidak edit data dari ERP
+                    },
+                    disabled=[c for c in display_cols] 
+                )
+                
+                # Simpan hasil pilihan ke session state untuk proses kirim vendor
+                final_items = edited_items[edited_items["PILIH"] == True]
+                st.info(f"💡 {len(final_items)} item terpilih untuk di-RFQ.")
             
             st.divider()
             st.subheader("🎯 Langkah 2: Assign ke Vendor")
