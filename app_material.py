@@ -189,42 +189,52 @@ def admin_portal():
                                 k_item = row['ID_SISTEM']
                                 st.session_state['selected_items_dict'][k_item] = row['PILIH']
 
-                # --- LANGKAH 2: REVIEW ---
+               # --- LANGKAH 2: REVIEW & ASSIGN VENDOR ---
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
-                # TOMBOL REFRESH MANUAL (Hanya 1 tombol ini untuk update tabel bawah)
-                # Ini cara paling profesional agar editor di atas tidak kaget/reset
-                if st.button("🔄 Update Review & Daftar Vendor", type="secondary", use_container_width=True):
+                # TOMBOL UPDATE (Penting untuk sinkronisasi tampilan)
+                if st.button("🔄 Update Review (Klik setelah pilih-pilih)", type="secondary", use_container_width=True):
                     st.rerun()
 
-                # Filter item yang terpilih
+                # LOGIKA PENGUNCIAN ITEM (BUKAN PER PR)
+                # 1. Ambil semua kunci yang statusnya benar-benar True
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
+
+                # 2. Siapkan data asli dengan ID_SISTEM yang sama
                 df_display['ID_SISTEM'] = df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
+                
+                # 3. FILTER: Hanya ambil baris yang ID_SISTEM-nya ada di daftar selected_keys
                 final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
 
                 if not final_items.empty:
-                    with st.expander(f"📋 Item Terpilih ({len(final_items)})", expanded=True):
-                        st.dataframe(final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']], hide_index=True, use_container_width=True)
+                    with st.expander(f"📋 Item Terpilih ({len(final_items)} item)", expanded=True):
+                        # Tampilkan tabel tanpa kolom ID_SISTEM agar bersih
+                        st.dataframe(
+                            final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']], 
+                            hide_index=True, 
+                            use_container_width=True
+                        )
+                        
                         if st.button("🚨 Reset Semua Pilihan"):
                             st.session_state['selected_items_dict'] = {}
                             st.rerun()
                     
-                              
+                    # --- LANJUT KE MULTISELECT VENDOR ---
                     df_u = get_data("Users")
                     vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
                     sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
                     
                     if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
-                        if not sel_v: 
+                        if not sel_v:
                             st.error("Silakan pilih minimal satu vendor.")
                         else:
-                            # Logika simpan GSheet Anda di sini
+                            # Logika simpan data ke GSheet Anda...
                             st.success("✅ Berhasil! RFQ telah dipublish.")
-                            st.session_state['selected_items_dict'] = {}
+                            st.session_state['selected_items_dict'] = {} # Kosongkan keranjang
                             st.rerun()
                 else:
-                    st.warning("Belum ada PR/item yang dipilih.")
+                    st.warning("Belum ada item yang dipilih dari Langkah 1.")
                     
     # --- TAB 2: COMPARISON ---
     with tabs[1]:
