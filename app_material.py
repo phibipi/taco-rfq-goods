@@ -93,7 +93,6 @@ def show_dashboard():
     else:
         vendor_portal(user['email'])
 
-# --- ADMIN PORTAL ---
 def admin_portal():
     tabs = st.tabs(["📥 Import PR", "📊 Monitoring & Comparison", "🔍 History Search"])
     
@@ -122,6 +121,7 @@ def admin_portal():
                 st.subheader("📝 Langkah 1: Pilih Item & Review Data")
                 search_query = st.text_input("🔍 Cari PR, Barang, Spek, atau Lokasi...", placeholder="Ketik di sini...")
                 
+                # 2. Filter Search
                 if search_query:
                     q = search_query.lower()
                     mask = (
@@ -143,14 +143,13 @@ def admin_portal():
                     header_text = f"📄 {pr_no} | 📍 {loc_val} | {df_pr_group['DESCRIPTION'].iloc[0][:40]}..."
                     
                     with st.expander(header_text, expanded=False):
-                        # --- FIX LOGIKA SELECT ALL ---
                         select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=f"all_{pr_no}")
                         
                         display_table_cols = ['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                         df_view = df_pr_group[display_table_cols].copy()
-                        df_view['unique_key'] = pr_no + "_" + df_view['DESCRIPTION'].astype(str)
+                        df_view['unique_key'] = pr_no.astype(str) + "_" + df_view['DESCRIPTION'].astype(str)
                         
-                        # Ambil status dari memori, atau ikuti tombol Select All
+                        # --- LOGIKA SINKRONISASI MEMORI (FIXED) ---
                         current_selections = []
                         for key in df_view['unique_key']:
                             if select_all_pr:
@@ -173,9 +172,9 @@ def admin_portal():
                             key=f"editor_{pr_no}"
                         )
                         
-                        # Simpan manual edit ke memori
+                        # Simpan perubahan manual
                         for i, row in edited_pr.iterrows():
-                            item_key = pr_no + "_" + str(row['DESCRIPTION'])
+                            item_key = pr_no.astype(str) + "_" + str(row['DESCRIPTION'])
                             st.session_state['selected_items_dict'][item_key] = row['PILIH']
                         
                         edited_pr['PR CODE'] = pr_no
@@ -183,8 +182,22 @@ def admin_portal():
                         all_edited_results.append(edited_pr)
 
                 st.divider()
-                st.subheader("🎯 Langkah 2: Assign ke Vendor")
+                st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
+                # Review items
+                selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v == True]
+                df_display['unique_key'] = df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
+                final_items = df_display[df_display['unique_key'].isin(selected_keys)].copy()
+
+                if not final_items.empty:
+                    with st.expander("📋 Lihat Daftar Item Terpilih", expanded=True):
+                        summary_cols = ['PR CODE', 'LOCATION', 'DESCRIPTION', 'QUANTITY', 'UOM']
+                        st.dataframe(final_items[summary_cols], hide_index=True, use_container_width=True)
+                        st.info(f"Total: **{len(final_items)} item** terpilih.")
+                else:
+                    st.warning("Belum ada item yang dipilih.")
+                
+                # Vendor Selection
                 df_users = get_data("Users")
                 list_vendors = df_users[df_users['role'] == 'vendor']['vendor_name'].tolist()
                 
@@ -195,13 +208,8 @@ def admin_portal():
                 sel_vendors = st.multiselect("Pilih Vendor:", list_vendors, key='selected_vendors')
                 
                 if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
-                    # AMBIL SEMUA YANG DICENTANG DARI MEMORI (Bukan cuma yang tampil)
-                    selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v == True]
-                    df_display['unique_key'] = df_display['PR CODE'] + "_" + df_display['DESCRIPTION'].astype(str)
-                    final_items = df_display[df_display['unique_key'].isin(selected_keys)]
-
                     if final_items.empty or not sel_vendors:
-                        st.error("Gagal: Pilih minimal 1 item (centang) dan 1 vendor!")
+                        st.error("Gagal: Pilih minimal 1 item dan 1 vendor!")
                     else:
                         with st.spinner("Sedang memproses RFQ..."):
                             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -211,13 +219,11 @@ def admin_portal():
                             
                             for _, row in final_items.iterrows():
                                 u_id = str(uuid.uuid4())[:8]
-                                # Master_Items
                                 master_rows.append([
                                     u_id, row.get('PR CODE',''), row.get('LOCATION',''), '', 
                                     '', '', '', row.get('DESCRIPTION',''), row.get('DESCRIPTION 2',''),
                                     row.get('UOM',''), row.get('QUANTITY',0), '', 'Open', ts
                                 ])
-                                # Access_Goods
                                 for v_name in sel_vendors:
                                     v_email = v_map.get(v_name)
                                     if v_email:
@@ -225,7 +231,7 @@ def admin_portal():
                             
                             if batch_save_data("Master_Items", master_rows) and batch_save_data("Access_Goods", access_rows):
                                 st.success(f"Berhasil! RFQ terkirim.")
-                                st.session_state['selected_items_dict'] = {} # Reset
+                                st.session_state['selected_items_dict'] = {} # Reset memori
                                 st.balloons()
 
     # --- TAB 2: COMPARISON ---
