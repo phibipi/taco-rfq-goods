@@ -50,11 +50,9 @@ def batch_save_data(sheet_name, data_list):
         return True
     return False
 
-# --- MAIN APP LOGIC ---
 def main():
     if 'user_info' not in st.session_state:
         st.session_state['user_info'] = None
-
     if st.session_state['user_info'] is None:
         show_login()
     else:
@@ -67,7 +65,6 @@ def show_login():
         with st.container(border=True):
             email_input = st.text_input("Email").strip().lower()
             password_input = st.text_input("Password", type="password").strip()
-
             if st.button("Masuk", type="primary", use_container_width=True):
                 df_users = get_data("Users")
                 if not df_users.empty:
@@ -124,7 +121,9 @@ def admin_portal():
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item")
-                search_query = st.text_input("🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini...")
+                search_query = st.text_input(
+                    "🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini..."
+                )
 
                 df_to_show = df_display.copy()
                 if search_query:
@@ -159,7 +158,9 @@ def admin_portal():
                                     del st.session_state[widget_key]
                                 st.rerun()
 
-                            # Build view from dict — dict is always source of truth
+                            # ✅ Build df_view — PILIH comes from the dict
+                            # The widget will persist checkbox state via its own key,
+                            # so df_view only matters on FIRST render or after forced reset
                             df_view = df_group[
                                 ['ID_SISTEM', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             ].copy()
@@ -170,29 +171,8 @@ def admin_portal():
                             )
                             df_view = df_view.reset_index(drop=True)
 
-                            # ✅ STEP 1: Read edited_rows BEFORE rendering the widget
-                            # At this point widget_key still has last run's state
-                            prev_widget_state = st.session_state.get(widget_key, {})
-                            prev_edited_rows = prev_widget_state.get("edited_rows", {})
-                            for row_idx_str, changes in prev_edited_rows.items():
-                                row_idx = int(row_idx_str)
-                                if row_idx < len(df_view) and 'PILIH' in changes:
-                                    id_sistem = df_view.iloc[row_idx]['ID_SISTEM']
-                                    st.session_state['selected_items_dict'][id_sistem] = changes['PILIH']
-
-                            # ✅ STEP 2: Delete widget key so data_editor re-renders
-                            # cleanly from df_view (which now reflects updated dict)
-                            if widget_key in st.session_state:
-                                del st.session_state[widget_key]
-
-                            # ✅ STEP 3: Rebuild df_view with updated dict values
-                            df_view['PILIH'] = [
-                                st.session_state['selected_items_dict'].get(k, False)
-                                for k in df_view['ID_SISTEM']
-                            ]
-
-                            # ✅ STEP 4: Render fresh editor from clean df_view
-                            st.data_editor(
+                            # ✅ Render editor — return value has full current state
+                            edited_df = st.data_editor(
                                 df_view,
                                 hide_index=True,
                                 use_container_width=True,
@@ -204,9 +184,17 @@ def admin_portal():
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM'],
                             )
 
+                            # ✅ KEY FIX: write edited_df (full state) into dict.
+                            # We do NOT delete the widget key, so on next rerun
+                            # the widget restores from its own cached state correctly,
+                            # and edited_df reflects that same state — no conflict.
+                            for _, row in edited_df.iterrows():
+                                st.session_state['selected_items_dict'][row['ID_SISTEM']] = row['PILIH']
+
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
 
+                # ✅ This now always reflects edited_df from above
                 selected_keys = [
                     k for k, v in st.session_state['selected_items_dict'].items() if v
                 ]
@@ -288,8 +276,6 @@ def admin_portal():
                 st.error("Kolom 'pr_number' tidak ditemukan.")
                 st.write("Kolom tersedia:", df_merged.columns.tolist())
 
-
-# --- VENDOR PORTAL ---
 def vendor_portal(email):
     st.header("📝 Form Penawaran Harga")
     df_acc = get_data("Access_Goods")
