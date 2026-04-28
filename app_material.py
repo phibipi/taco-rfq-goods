@@ -106,133 +106,126 @@ def admin_portal():
             # 1. Baca data (header=2 untuk baris ke-3)
             df_raw = pd.read_excel(uploaded_file, header=2)
             
-            # 2. BERSIHKAN NAMA KOLOM (Spasi tak kasat mata sering jadi penyebab hilang)
+            # 2. Standarisasi Nama Kolom (Uppercase & Strip)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # --- FITUR DEBUG (Hapus kalau sudah lancar) ---
-            with st.expander("🛠️ Debug Data (Klik jika tabel hilang)"):
-                st.write("Kolom terdeteksi:", df_raw.columns.tolist())
-                st.write("5 Baris pertama:", df_raw.head())
-            
-            # 3. CARI KOLOM DINAMIS
-            def find_col(keywords, df):
-                for col in df.columns:
+            # 3. Fungsi Cari Kolom Dinamis (Hanya perlu satu fungsi)
+            def find_col_dynamic(keywords, df_cols):
+                for col in df_cols:
                     if any(key in col for key in keywords):
                         return col
                 return None
 
-            c_status = find_col(['STATUS'], df_raw)
-            c_qty = find_col(['QUANTITY', 'QTY'], df_raw)
+            # Identifikasi Kolom Utama
+            c_status = find_col_dynamic(['STATUS'], df_raw.columns)
+            c_qty = find_col_dynamic(['QUANTITY', 'QTY'], df_raw.columns)
+            c_pr = find_col_dynamic(['PR CODE', 'NO. PR', 'PURCHASE REQUEST'], df_raw.columns)
+            c_desc = find_col_dynamic(['DESCRIPTION', 'NAMA BARANG', 'ITEM'], df_raw.columns)
+            c_desc2 = find_col_dynamic(['DESCRIPTION 2', 'SPEK'], df_raw.columns)
+            c_uom = find_col_dynamic(['UOM', 'SATUAN'], df_raw.columns)
+            c_loc = find_col_dynamic(['LOCATION', 'LOKASI'], df_raw.columns)
+            c_prio = find_col_dynamic(['PRIORITY'], df_raw.columns)
+            c_date = find_col_dynamic(['CREATE DATE', 'TANGGAL'], df_raw.columns)
 
-            # 4. PROSES FILTER (Dibuat lebih santai)
+            # 4. PROSES FILTER (Status Open & Qty > 0)
             df_filtered = df_raw.copy()
 
             if c_status:
-                # Filter status Open (Case Insensitive)
                 df_filtered = df_filtered[df_filtered[c_status].astype(str).str.contains('Open', case=False, na=False)]
             
             if c_qty:
-                # Ubah ke angka, yang error jadi 0
                 df_filtered[c_qty] = pd.to_numeric(df_filtered[c_qty], errors='coerce').fillna(0)
-                # Filter hanya yang > 0
                 df_filtered = df_filtered[df_filtered[c_qty] > 0]
 
             # 5. CEK APAKAH HASIL FILTER KOSONG
             if df_filtered.empty:
-                st.warning("⚠️ Data hilang setelah difilter! Cek apakah kolom STATUS mengandung kata 'Open' dan QTY lebih dari 0.")
-                # Tampilkan data aslinya biar Admin gak bingung
-                df_display = df_raw.head(10) 
+                st.warning("⚠️ Data kosong setelah filter (Cek Status 'Open' & Qty > 0). Menampilkan 10 data asli untuk cek.")
+                df_display_base = df_raw.head(10)
             else:
-                st.success(f"✅ Menampilkan {len(df_filtered)} item.")
-                df_display = df_filtered
+                st.success(f"✅ Terdeteksi {len(df_filtered)} item valid.")
+                df_display_base = df_filtered
 
             st.subheader("📝 Langkah 1: Pilih Item & Review Data")
             
-            # 3. MAPPING FLEXIBLE: Cari kolom yang mirip-mirip namanya
-            # Ini biar kalau di Excel namanya 'PR CODE' atau 'NO. PR' tetap tertangkap
-            def find_col(keywords, df):
-                for col in df.columns:
-                    if any(key in col for key in keywords):
-                        return col
-                return None
-
-            col_pr = find_col(['PR CODE', 'NO. PR', 'PURCHASE REQUEST'], df_filtered)
-            col_desc = find_col(['DESCRIPTION', 'NAMA BARANG', 'ITEM'], df_filtered)
-            col_desc2 = find_col(['DESCRIPTION 2'], df_filtered)
-            col_qty = find_col(['QUANTITY', 'QTY'], df_filtered)
-            col_uom = find_col(['UOM', 'SATUAN'], df_filtered)
-
-            # Buat DataFrame baru khusus untuk tampilan (View)
-            # Kita hanya ambil kolom yang ketemu saja
-            display_cols = [c for c in [col_pr, col_desc, col_desc2, col_qty, col_uom] if c is not None]
+            # Ambil kolom yang ditemukan saja untuk ditampilkan
+            display_cols = [c for c in [c_pr, c_desc, c_desc2, c_qty, c_uom] if c is not None]
             
             if not display_cols:
-                st.error("❌ Sistem tidak mengenali kolom di Excel Anda. Pastikan Header di baris ke-3.")
-                st.write("Kolom yang terbaca:", df_raw.columns.tolist())
+                st.error("❌ Kolom tidak dikenali. Pastikan Header di baris ke-3.")
+                with st.expander("Lihat Kolom yang Terdeteksi"):
+                    st.write(df_raw.columns.tolist())
             else:
-                df_view = df_filtered[display_cols].copy()
-                df_view.insert(0, "PILIH", True) # Masukkan checkbox di awal
+                # Buat DataFrame View
+                df_view = df_display_base[display_cols].copy()
+                df_view.insert(0, "PILIH", True) 
 
-                # TAMPILKAN EDITOR
                 edited_items = st.data_editor(
                     df_view,
                     hide_index=True,
                     use_container_width=True,
                     column_config={
-                        "PILIH": st.column_config.CheckboxColumn(help="Centang untuk kirim ke vendor", default=True),
-                        # Kolom lainnya diset disabled agar Admin tidak edit data dari ERP
+                        "PILIH": st.column_config.CheckboxColumn(default=True),
                     },
-                    disabled=[c for c in display_cols] 
+                    disabled=display_cols,
+                    key="editor_pr_goods"
                 )
                 
-                # Simpan hasil pilihan ke session state untuk proses kirim vendor
                 final_items = edited_items[edited_items["PILIH"] == True]
-                st.info(f"💡 {len(final_items)} item terpilih untuk di-RFQ.")
+                st.info(f"💡 {len(final_items)} item terpilih.")
             
-            st.divider()
-            st.subheader("🎯 Langkah 2: Assign ke Vendor")
-            df_users = get_data("Users")
-            list_vendors = df_users[df_users['role'] == 'vendor']['vendor_name'].tolist()
-            
-            c1, c2 = st.columns([1, 4])
-            if c1.button("✅ Select All"): st.session_state['selected_vendors'] = list_vendors
-            if c2.button("🗑️ Clear"): st.session_state['selected_vendors'] = []
-            
-            sel_vendors = st.multiselect("Pilih Vendor Penerima:", list_vendors, key='selected_vendors')
-            
-            if st.button("🚀 Publish Undangan RFQ", type="primary"):
-                if final_items.empty or not sel_vendors:
-                    st.warning("Mohon lengkapi pilihan Item dan Vendor.")
-                else:
-                    with st.spinner("Sedang memproses ribuan data..."):
-                        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        # A. Simpan ke Master_Items
-                        master_rows = []
-                        id_map = {} # Untuk tracking id_unique
-                        for _, row in final_items.iterrows():
-                            u_id = str(uuid.uuid4())[:8] # ID Unik per Item
-                            id_map[row['Description']] = u_id
-                            # Pastikan urutan kolom sesuai Sheet Master_Items
-                            master_rows.append([
-                                u_id, row.get('PR Code',''), row.get('Location',''), row.get('Priority Status',''),
-                                '', '', '', row.get('Description',''), row.get('Description 2',''),
-                                row.get('UoM',''), row.get('Quantity', 0), str(row.get('Create Date','')), 'Open', ts
-                            ])
-                        
-                        # B. Simpan ke Access_Goods (Mapping Vendor vs Item)
-                        access_rows = []
-                        for v_name in sel_vendors:
-                            v_email = df_users[df_users['vendor_name'] == v_name]['email'].iloc[0]
-                            for _, item in final_items.iterrows():
-                                access_rows.append([v_email, item['PR Code'], id_map[item['Description']], "Active"])
-                        
-                        # Eksekusi Simpan
-                        batch_save_data("Master_Items", master_rows)
-                        batch_save_data("Access_Goods", access_rows)
-                        
-                        st.success(f"Berhasil! {len(final_items)} item dikirim ke {len(sel_vendors)} vendor.")
-                        st.balloons()
+                st.divider()
+                st.subheader("🎯 Langkah 2: Assign ke Vendor")
+                
+                df_users = get_data("Users")
+                list_vendors = df_users[df_users['role'] == 'vendor']['vendor_name'].tolist()
+                
+                c1, c2 = st.columns([1, 4])
+                if c1.button("✅ Select All"): st.session_state['selected_vendors'] = list_vendors
+                if c2.button("🗑️ Clear"): st.session_state['selected_vendors'] = []
+                
+                sel_vendors = st.multiselect("Pilih Vendor Penerima:", list_vendors, key='selected_vendors')
+                
+                if st.button("🚀 Publish Undangan RFQ", type="primary"):
+                    if final_items.empty or not sel_vendors:
+                        st.warning("Mohon pilih minimal 1 item dan 1 vendor.")
+                    else:
+                        with st.spinner("Publishing..."):
+                            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            master_rows = []
+                            access_rows = []
+                            
+                            # Ambil mapping email vendor
+                            vendor_emails = {v['vendor_name']: v['email'] for _, v in df_users.iterrows() if v['role'] == 'vendor'}
+                            
+                            for _, row in final_items.iterrows():
+                                u_id = str(uuid.uuid4())[:8]
+                                pr_val = row.get(c_pr, "")
+                                item_val = row.get(c_desc, "")
+                                
+                                # Data untuk Master_Items
+                                master_rows.append([
+                                    u_id, pr_val, 
+                                    df_filtered.loc[_, c_loc] if c_loc in df_filtered.columns else "",
+                                    df_filtered.loc[_, c_prio] if c_prio in df_filtered.columns else "",
+                                    "", "", "", # Budget, User, PIC (Kosongkan dulu)
+                                    item_val, 
+                                    row.get(c_desc2, ""), 
+                                    row.get(c_uom, ""), 
+                                    row.get(c_qty, 0), 
+                                    str(df_filtered.loc[_, c_date]) if c_date in df_filtered.columns else "",
+                                    "Open", ts
+                                ])
+                                
+                                # Data untuk Access_Goods
+                                for v_name in sel_vendors:
+                                    v_email = vendor_emails.get(v_name)
+                                    if v_email:
+                                        access_rows.append([v_email, pr_val, u_id, "Active"])
+                            
+                            # Simpan
+                            if batch_save_data("Master_Items", master_rows) and batch_save_data("Access_Goods", access_rows):
+                                st.success(f"Berhasil! RFQ telah dikirim ke {len(sel_vendors)} vendor.")
+                                st.balloons()
 
     # --- TAB 2: COMPARISON ---
     with tabs[1]:
