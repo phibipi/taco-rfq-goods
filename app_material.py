@@ -137,7 +137,7 @@ def admin_portal():
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
-                        df_group = df_group.reset_index(drop=True)  # index is now 0,1,2...
+                        df_group = df_group.reset_index(drop=True)
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
 
                         with st.expander(f"📄 PR: {pr_no} | 📍 {loc}"):
@@ -163,24 +163,29 @@ def admin_portal():
                             h4.markdown("**Qty**")
                             h5.markdown("**UOM**")
 
-                            # One checkbox per item row — key uses pr_no + row index
                             for idx, item_row in df_group.iterrows():
                                 id_sistem = item_row['ID_SISTEM']
+                                chk_key = f"chk_{pr_no}_{idx}"
                                 col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
 
-                                checked = col1.checkbox(
+                                # ✅ on_change fires BEFORE rest of page renders,
+                                # so review table below always sees updated dict
+                                def make_on_change(k, ck):
+                                    def on_change():
+                                        st.session_state['selected_items_dict'][k] = st.session_state[ck]
+                                    return on_change
+
+                                col1.checkbox(
                                     label="select",
                                     value=st.session_state['selected_items_dict'].get(id_sistem, False),
-                                    key=f"chk_{pr_no}_{idx}",
-                                    label_visibility="collapsed"
+                                    key=chk_key,
+                                    label_visibility="collapsed",
+                                    on_change=make_on_change(id_sistem, chk_key)
                                 )
                                 col2.write(item_row.get('DESCRIPTION', ''))
                                 col3.write(item_row.get('DESCRIPTION 2', ''))
                                 col4.write(item_row.get('QUANTITY', ''))
                                 col5.write(item_row.get('UOM', ''))
-
-                                # Write checkbox state directly into dict — reliable every rerun
-                                st.session_state['selected_items_dict'][id_sistem] = checked
 
                 # --- LANGKAH 2 ---
                 st.divider()
