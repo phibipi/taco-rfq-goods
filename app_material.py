@@ -121,11 +121,11 @@ def admin_portal():
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # Inisialisasi keranjang belanja
+            # 1. INISIALISASI SESSION STATE
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
 
-            # Filter Open & Qty > 0
+            # Filter Dasar
             if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
                 df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
                 df_display = df_raw[(df_raw['STATUS'].astype(str).str.strip() == 'Open') & (df_raw['QUANTITY'] > 0)].copy()
@@ -134,7 +134,7 @@ def admin_portal():
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item")
-                search_query = st.text_input("🔍 Cari...", placeholder="Ketik untuk memfilter PR...")
+                search_query = st.text_input("🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini...")
                 
                 df_to_show = df_display.copy()
                 if search_query:
@@ -145,39 +145,43 @@ def admin_portal():
 
                 grouped_pr = df_to_show['PR CODE'].unique()
 
-                # --- RENDER LIST PR (LANGKAH 1) ---
-                with st.container(height=500, border=True):
+                # --- FUNGSI CALLBACK UNTUK MASTER CHECKBOX ---
+                def toggle_all_pr(pr_id, keys, state_key):
+                    new_val = st.session_state[state_key]
+                    for k in keys:
+                        st.session_state['selected_items_dict'][k] = new_val
+
+                # --- RENDER LIST PR ---
+                with st.container(height=550, border=True):
                     for pr_no in grouped_pr:
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
                         
-                        # 1. Identifikasi Item
+                        # Buat Unique Keys
                         df_view = df_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']].copy()
                         df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
                         keys_in_pr = df_view['unique_key'].tolist()
 
                         with st.expander(f"📄 {pr_no} | 📍 {loc}"):
-                            # --- LOGIKA MASTER CHECKBOX CERDAS ---
-                            # Cek apakah SEMUA item di PR ini sudah ter-select di memori
-                            all_checked = all(st.session_state['selected_items_dict'].get(k, False) for k in keys_in_pr)
+                            # Cek Status "Pilih Semua" saat ini
+                            is_all_checked = all(st.session_state['selected_items_dict'].get(k, False) for k in keys_in_pr)
                             
-                            sel_all_key = f"all_{pr_no}"
+                            # Master Checkbox dengan Callback
+                            master_key = f"master_{pr_no}"
+                            st.checkbox(
+                                "Pilih Semua Item di PR ini", 
+                                value=is_all_checked, 
+                                key=master_key,
+                                on_change=toggle_all_pr,
+                                args=(pr_no, keys_in_pr, master_key)
+                            )
                             
-                            # Tampilkan checkbox "Pilih Semua" dengan nilai berdasarkan kondisi memori
-                            select_all = st.checkbox("Pilih Semua", value=all_checked, key=sel_all_key)
-                            
-                            # Jika user nge-klik "Pilih Semua" secara manual (berbeda dengan kondisi all_checked)
-                            # Kita update memori untuk semua item di PR ini
-                            if select_all != all_checked:
-                                for k in keys_in_pr:
-                                    st.session_state['selected_items_dict'][k] = select_all
-                                st.rerun() # Refresh sekali agar tabel di bawahnya sinkron
+                            # Siapkan Data untuk Editor
+                            current_vals = [st.session_state['selected_items_dict'].get(k, False) for k in keys_in_pr]
+                            df_view.insert(0, "PILIH", current_vals)
 
-                            # 2. Siapkan data untuk editor
-                            current_bools = [st.session_state['selected_items_dict'].get(k, False) for k in keys_in_pr]
-                            df_view.insert(0, "PILIH", current_bools)
-
-                            # 3. EDITOR TABEL
+                            # DATA EDITOR
+                            # Kita deteksi perubahan editor secara manual
                             edited_df = st.data_editor(
                                 df_view.drop(columns=['unique_key']),
                                 hide_index=True,
@@ -186,22 +190,17 @@ def admin_portal():
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             )
 
-                            # 4. SINKRONISASI MANUAL (Jika user un-check 1 baris saja)
+                            # Sinkronisasi dari Editor ke Memori
                             for _, row in edited_df.iterrows():
-                                k_item = str(pr_no) + "_" + str(row['DESCRIPTION'])
-                                # Jika ada perubahan di tabel (misal uncheck 1 baris)
-                                if st.session_state['selected_items_dict'].get(k_item) != row['PILIH']:
-                                    st.session_state['selected_items_dict'][k_item] = row['PILIH']
-                                    # Cek: jika ini uncheck, maka master checkbox di rerun berikutnya otomatis False
-                                    st.rerun() 
+                                item_k = str(pr_no) + "_" + str(row['DESCRIPTION'])
+                                if st.session_state['selected_items_dict'].get(item_k) != row['PILIH']:
+                                    st.session_state['selected_items_dict'][item_k] = row['PILIH']
+                                    st.rerun()
 
                 # --- LANGKAH 2: REVIEW ---
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
-                # TOMBOL REFRESH MANUAL (Hanya di sini saja biar tidak loop)
-                if st.button("🔄 Refresh Daftar Terpilih"): st.rerun()
-
                 # Filter hanya yang bernilai True
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
                 df_display['unique_key'] = df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
@@ -209,26 +208,28 @@ def admin_portal():
 
                 if not final_items.empty:
                     with st.expander(f"📋 Item Terpilih ({len(final_items)})", expanded=True):
-                        st.dataframe(final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY']], hide_index=True, use_container_width=True)
-                        if st.button("🗑️ Reset Semua"):
+                        st.dataframe(final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']], hide_index=True, use_container_width=True)
+                        if st.button("🗑️ Reset Semua Pilihan", type="secondary"):
                             st.session_state['selected_items_dict'] = {}
                             st.rerun()
                     
                     # Pemilihan Vendor
                     df_u = get_data("Users")
                     vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist()
-                    sel_v = st.multiselect("Pilih Vendor:", vendors)
+                    sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
                     
                     if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
-                        if not sel_v: st.error("Pilih vendor!")
+                        if not sel_v:
+                            st.error("Pilih vendor!")
                         else:
-                            # ... Logika Simpan (Master_rows & Access_rows) ...
-                            st.success("✅ Berhasil dipublish!")
+                            # Logika Simpan Database (master_rows & access_rows)
+                            # ... bagian simpan di sini ...
+                            st.success("✅ RFQ Berhasil Terkirim!")
                             st.session_state['selected_items_dict'] = {}
                             st.rerun()
                 else:
-                    st.warning("Belum ada item yang dipilih.")
-
+                    st.warning("Belum ada PR/item yang dipilih.")
+                    
     # --- TAB 2: COMPARISON ---
     with tabs[1]:
         st.header("Price Comparison Analysis")
