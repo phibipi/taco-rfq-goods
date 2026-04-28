@@ -154,49 +154,53 @@ def admin_portal():
                 all_edited_results = []
                 grouped_pr = df_to_show['PR CODE'].unique()
 
-                for pr_no in grouped_pr:
-                    df_pr_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
-                    loc_val = df_pr_group['LOCATION'].iloc[0] if 'LOCATION' in df_pr_group.columns else "Unknown"
-                    header_text = f"📄 {pr_no} | 📍 {loc_val} | {df_pr_group['DESCRIPTION'].iloc[0][:40]}..."
+                with st.container(height=500, border=True):
+                    if len(grouped_pr) == 0:
+                        st.info("Tidak ada PR yang cocok dengan pencarian.")
+                
+                    for pr_no in grouped_pr:
+                        df_pr_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
+                        loc_val = df_pr_group['LOCATION'].iloc[0] if 'LOCATION' in df_pr_group.columns else "Unknown"
+                        header_text = f"📄 {pr_no} | 📍 {loc_val} | {df_pr_group['DESCRIPTION'].iloc[0][:40]}..."
                     
-                    with st.expander(header_text, expanded=False):
-                        select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=f"all_{pr_no}")
+                        with st.expander(header_text, expanded=False):
+                            select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=f"all_{pr_no}")
                         
-                        display_table_cols = ['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
-                        df_view = df_pr_group[display_table_cols].copy()
+                            display_table_cols = ['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
+                            df_view = df_pr_group[display_table_cols].copy()
                         
                         # --- PERBAIKAN DI SINI ---
-                        df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
+                            df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
                         
-                        current_selections = []
-                        for key in df_view['unique_key']:
-                            if select_all_pr:
-                                st.session_state['selected_items_dict'][key] = True
-                            status = st.session_state['selected_items_dict'].get(key, False)
-                            current_selections.append(status)
+                            current_selections = []
+                            for key in df_view['unique_key']:
+                                if select_all_pr:
+                                    st.session_state['selected_items_dict'][key] = True
+                                status = st.session_state['selected_items_dict'].get(key, False)
+                                current_selections.append(status)
                         
-                        df_view.insert(0, "PILIH", current_selections)
+                            df_view.insert(0, "PILIH", current_selections)
 
-                        edited_pr = st.data_editor(
-                            df_view.drop(columns=['unique_key']),
-                            hide_index=True,
-                            use_container_width=True,
-                            column_config={
-                                "PILIH": st.column_config.CheckboxColumn("PILIH", default=False),
-                                "QUANTITY": st.column_config.NumberColumn("QTY", format="%d"),
-                            },
-                            disabled=display_table_cols,
-                            key=f"editor_{pr_no}"
-                        )
+                            edited_pr = st.data_editor(
+                                df_view.drop(columns=['unique_key']),
+                                hide_index=True,
+                                use_container_width=True,
+                                column_config={
+                                    "PILIH": st.column_config.CheckboxColumn("PILIH", default=False),
+                                    "QUANTITY": st.column_config.NumberColumn("QTY", format="%d"),
+                                },
+                                disabled=display_table_cols,
+                                key=f"editor_{pr_no}"
+                            )
                         
-                        for i, row in edited_pr.iterrows():
-                            # --- DAN DI SINI ---
-                            item_key = str(pr_no) + "_" + str(row['DESCRIPTION'])
-                            st.session_state['selected_items_dict'][item_key] = row['PILIH']
+                            for i, row in edited_pr.iterrows():
+                                # --- DAN DI SINI ---
+                                item_key = str(pr_no) + "_" + str(row['DESCRIPTION'])
+                                st.session_state['selected_items_dict'][item_key] = row['PILIH']
                         
-                        edited_pr['PR CODE'] = pr_no
-                        edited_pr['LOCATION'] = loc_val
-                        all_edited_results.append(edited_pr)
+                            edited_pr['PR CODE'] = pr_no
+                            edited_pr['LOCATION'] = loc_val
+                            all_edited_results.append(edited_pr)
 
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
