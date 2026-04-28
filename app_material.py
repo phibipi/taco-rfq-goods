@@ -137,28 +137,51 @@ def admin_portal():
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item & Review Data")
-                
-                # Pilih kolom yang mau ditampilkan saja (sesuai file kamu)
-                # Di file kamu kolomnya: PR CODE, DESCRIPTION, DESCRIPTION 2, UOM, QUANTITY
-                cols_to_show = ['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'UOM', 'QUANTITY']
-                # Cek apakah kolom-kolom ini ada di excel
+                st.info("Data dikelompokkan per Nomor PR. Silakan buka expander untuk memilih item.")
+
+                # 1. Definisikan urutan kolom (QTY dulu baru UOM sesuai request)
+                cols_to_show = ['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                 valid_cols = [c for c in cols_to_show if c in df_display.columns]
                 
-                df_view = df_display[valid_cols].copy()
-                df_view.insert(0, "PILIH", True) # Default centang semua
+                # List untuk menampung semua hasil editan dari berbagai expander
+                all_edited_results = []
 
-                edited_items = st.data_editor(
-                    df_view,
-                    hide_index=True,
-                    use_container_width=True,
-                    column_config={
-                        "PILIH": st.column_config.CheckboxColumn(default=True),
-                    },
-                    disabled=valid_cols, # Admin tidak boleh edit spek dari ERP
-                    key="editor_goods_v2"
-                )
-                
-                final_items = edited_items[edited_items["PILIH"] == True]
+                # 2. Kelompokkan per Nomor PR
+                grouped_pr = df_display['PR CODE'].unique()
+
+                for pr_no in grouped_pr:
+                    # Ambil data untuk PR ini saja
+                    df_pr_group = df_display[df_display['PR CODE'] == pr_no][valid_cols].copy()
+                    
+                    # Ambil info User/PIC atau Desc utama untuk judul header (opsional)
+                    sample_desc = df_pr_group['DESCRIPTION'].iloc[0]
+                    
+                    # Buat Expander per Nomor PR
+                    with st.expander(f"📄 PR: {pr_no} | {sample_desc[:50]}...", expanded=True):
+                        df_view = df_pr_group.copy()
+                        df_view.insert(0, "PILIH", True) # Checkbox di depan
+
+                        # Tampilkan editor khusus untuk PR ini
+                        edited_pr = st.data_editor(
+                            df_view,
+                            hide_index=True,
+                            use_container_width=True,
+                            column_config={
+                                "PILIH": st.column_config.CheckboxColumn(default=True),
+                                "QUANTITY": st.column_config.NumberColumn(format="%d"),
+                            },
+                            disabled=valid_cols,
+                            key=f"editor_{pr_no}" # Key harus unik per PR
+                        )
+                        all_edited_results.append(edited_pr)
+
+                # Gabungkan kembali semua item yang dipilih dari semua expander
+                if all_edited_results:
+                    final_df_all = pd.concat(all_edited_results)
+                    final_items = final_df_all[final_df_all["PILIH"] == True]
+                    st.success(f"📦 Total {len(final_items)} item terpilih dari {len(grouped_pr)} PR.")
+                else:
+                    final_items = pd.DataFrame()
                 
                 st.divider()
                 st.subheader("🎯 Langkah 2: Assign ke Vendor")
