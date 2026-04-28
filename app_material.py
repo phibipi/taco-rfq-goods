@@ -137,12 +137,6 @@ def admin_portal():
                     )
                     df_to_show = df_to_show[mask]
 
-                # -------------------------------------------------------
-                # RENDER PR EXPANDERS
-                # Every checkbox change triggers a natural Streamlit rerun.
-                # We sync editor → dict during that rerun, so the review
-                # table below always reflects the latest state.
-                # -------------------------------------------------------
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
@@ -167,7 +161,7 @@ def admin_portal():
                                     del st.session_state[widget_key]
                                 st.rerun()
 
-                            # Build view DataFrame from dict (source of truth)
+                            # Build view from dict (source of truth)
                             df_view = df_group[
                                 ['ID_SISTEM', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             ].copy()
@@ -178,7 +172,7 @@ def admin_portal():
                             )
                             df_view = df_view.reset_index(drop=True)
 
-                            edited_df = st.data_editor(
+                            st.data_editor(
                                 df_view,
                                 hide_index=True,
                                 use_container_width=True,
@@ -190,17 +184,20 @@ def admin_portal():
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM'],
                             )
 
-                            # ✅ KEY FIX: sync edited_df → dict during this render pass.
-                            # When user clicks a checkbox, Streamlit reruns the whole script.
-                            # At that point, edited_df already contains the new checkbox value,
-                            # so we write it to the dict here — before the review table renders.
-                            for _, row in edited_df.iterrows():
-                                st.session_state['selected_items_dict'][row['ID_SISTEM']] = row['PILIH']
+                            # ✅ KEY FIX: read widget state directly instead of edited_df.
+                            # edited_rows only contains rows the user actually changed,
+                            # so we don't accidentally overwrite other rows with stale values.
+                            widget_state = st.session_state.get(widget_key, {})
+                            edited_rows = widget_state.get("edited_rows", {})
+                            for row_idx_str, changes in edited_rows.items():
+                                row_idx = int(row_idx_str)
+                                if row_idx < len(df_view) and 'PILIH' in changes:
+                                    id_sistem = df_view.iloc[row_idx]['ID_SISTEM']
+                                    st.session_state['selected_items_dict'][id_sistem] = changes['PILIH']
 
                 # -------------------------------------------------------
                 # LANGKAH 2: REVIEW TABLE
-                # Renders AFTER all editors are processed above, so
-                # selected_items_dict is always up to date at this point.
+                # Renders after all editors synced above — always current.
                 # -------------------------------------------------------
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
