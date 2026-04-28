@@ -102,51 +102,33 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
         
         if uploaded_file:
-            # Sesuai permintaan: Header ada di baris ke-3 (header=2)
             df_raw = pd.read_excel(uploaded_file, header=2)
-            
-            # Bersihkan nama kolom: Uppercase dan buang spasi
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # --- LOGIKA FILTER (Status: Open & Qty > 0) ---
-            # Kita cari kolomnya secara spesifik
+            # --- 1. INISIALISASI MEMORI ---
+            if 'selected_items_dict' not in st.session_state:
+                st.session_state['selected_items_dict'] = {}
+            
             col_status = 'STATUS'
             col_qty = 'QUANTITY'
             
             if col_status in df_raw.columns and col_qty in df_raw.columns:
-                # 1. Pastikan Qty adalah angka
                 df_raw[col_qty] = pd.to_numeric(df_raw[col_qty], errors='coerce').fillna(0)
-                
-                # 2. Filter Ganda
-                df_filtered = df_raw[
-                    (df_raw[col_status].astype(str).str.strip() == 'Open') & 
-                    (df_raw[col_qty] > 0)
-                ].copy()
-                
-                if df_filtered.empty:
-                    st.warning("⚠️ Tidak ada data dengan Status 'Open' dan Quantity > 0.")
-                    # Tampilkan sedikit data asli untuk cek manual
-                    st.write("Contoh data asli (5 baris):", df_raw[[col_status, col_qty]].head())
-                    df_display = pd.DataFrame() # Biarkan kosong agar tidak salah publish
-                else:
-                    st.success(f"✅ Berhasil memfilter {len(df_filtered)} item (Status: Open & Qty > 0).")
-                    df_display = df_filtered
+                df_display = df_raw[(df_raw[col_status].astype(str).str.strip() == 'Open') & (df_raw[col_qty] > 0)].copy()
             else:
-                st.error(f"❌ Kolom STATUS atau QUANTITY tidak ditemukan! Kolom yang ada: {list(df_raw.columns[:5])}...")
-                df_display = pd.DataFrame()
+                df_display = df_raw.copy()
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item & Review Data")
-                search_query = st.text_input("🔍 Cari PR, Barang, Spek, atau Lokasi...", placeholder="Ketik di sini...")
+                search_query = st.text_input("🔍 Cari PR, Barang, Spek, atau Lokasi...", placeholder="Ketik di sini...", regex=False)
                 
-                # Filter pencarian (4 dimensi)
                 if search_query:
                     q = search_query.lower()
                     mask = (
-                        df_display['PR CODE'].astype(str).str.lower().str.contains(q) |
-                        df_display['DESCRIPTION'].astype(str).str.lower().str.contains(q) |
-                        df_display['DESCRIPTION 2'].astype(str).str.lower().str.contains(q) |
-                        df_display['LOCATION'].astype(str).str.lower().str.contains(q)
+                        df_display['PR CODE'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
+                        df_display['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
+                        df_display['DESCRIPTION 2'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
+                        df_display['LOCATION'].astype(str).str.lower().str.contains(q, regex=False, na=False)
                     )
                     df_to_show = df_display[mask]
                 else:
@@ -158,23 +140,29 @@ def admin_portal():
                 for pr_no in grouped_pr:
                     df_pr_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
                     loc_val = df_pr_group['LOCATION'].iloc[0] if 'LOCATION' in df_pr_group.columns else "Unknown"
-                    desc_val = df_pr_group['DESCRIPTION'].iloc[0]
-                    
-                    header_text = f"📄 {pr_no} | 📍 {loc_val} | {desc_val[:40]}..."
+                    header_text = f"📄 {pr_no} | 📍 {loc_val} | {df_pr_group['DESCRIPTION'].iloc[0][:40]}..."
                     
                     with st.expander(header_text, expanded=False):
-                        # --- FITUR SELECT ALL PER PR ---
-                        # Kita gunakan checkbox di atas tabel untuk mentrigger select all item di PR ini saja
-                        select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=f"all_{pr_no}", value=False)
+                        # --- FIX LOGIKA SELECT ALL ---
+                        select_all_pr = st.checkbox(f"Pilih Semua Item di PR {pr_no}", key=f"all_{pr_no}")
                         
                         display_table_cols = ['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                         df_view = df_pr_group[display_table_cols].copy()
+                        df_view['unique_key'] = pr_no + "_" + df_view['DESCRIPTION'].astype(str)
                         
-                        # Default "PILIH" mengikuti status checkbox "Pilih Semua Item di PR"
-                        df_view.insert(0, "PILIH", select_all_pr) 
+                        # Ambil status dari memori, atau ikuti tombol Select All
+                        current_selections = []
+                        for key in df_view['unique_key']:
+                            if select_all_pr:
+                                st.session_state['selected_items_dict'][key] = True
+                            
+                            status = st.session_state['selected_items_dict'].get(key, False)
+                            current_selections.append(status)
+                        
+                        df_view.insert(0, "PILIH", current_selections)
 
                         edited_pr = st.data_editor(
-                            df_view,
+                            df_view.drop(columns=['unique_key']),
                             hide_index=True,
                             use_container_width=True,
                             column_config={
@@ -182,48 +170,63 @@ def admin_portal():
                                 "QUANTITY": st.column_config.NumberColumn("QTY", format="%d"),
                             },
                             disabled=display_table_cols,
-                            key=f"editor_{pr_no}_{search_query}"
+                            key=f"editor_{pr_no}"
                         )
                         
-                        # Kembalikan data identitas untuk keperluan simpan
+                        # Simpan manual edit ke memori
+                        for i, row in edited_pr.iterrows():
+                            item_key = pr_no + "_" + str(row['DESCRIPTION'])
+                            st.session_state['selected_items_dict'][item_key] = row['PILIH']
+                        
                         edited_pr['PR CODE'] = pr_no
                         edited_pr['LOCATION'] = loc_val
                         all_edited_results.append(edited_pr)
 
-                # Gabungkan hasil dari semua expander
-                if all_edited_results:
-                    final_df_all = pd.concat(all_edited_results)
-                    # Hanya ambil yang benar-benar dicentang (PILIH == True)
-                    final_items = final_df_all[final_df_all["PILIH"] == True]
-                    
-                    if not final_items.empty:
-                        st.success(f"📦 {len(final_items)} item terpilih dari {final_items['PR CODE'].nunique()} PR.")
-                    else:
-                        st.info("Belum ada item yang dipilih.")
-                else:
-                    final_items = pd.DataFrame()
-                
                 st.divider()
                 st.subheader("🎯 Langkah 2: Assign ke Vendor")
                 
                 df_users = get_data("Users")
                 list_vendors = df_users[df_users['role'] == 'vendor']['vendor_name'].tolist()
                 
-                col_a, col_b = st.columns([1, 4])
-                if col_a.button("✅ Select All Vendors"): st.session_state['selected_vendors'] = list_vendors
-                if col_b.button("🗑️ Clear Selection"): st.session_state['selected_vendors'] = []
+                c1, c2 = st.columns([1, 4])
+                if c1.button("✅ Select All Vendors"): st.session_state['selected_vendors'] = list_vendors
+                if c2.button("🗑️ Clear Selection"): st.session_state['selected_vendors'] = []
                 
-                sel_vendors = st.multiselect("Pilih Vendor Penerima Undangan:", list_vendors, key='selected_vendors')
+                sel_vendors = st.multiselect("Pilih Vendor:", list_vendors, key='selected_vendors')
                 
                 if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
+                    # AMBIL SEMUA YANG DICENTANG DARI MEMORI (Bukan cuma yang tampil)
+                    selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v == True]
+                    df_display['unique_key'] = df_display['PR CODE'] + "_" + df_display['DESCRIPTION'].astype(str)
+                    final_items = df_display[df_display['unique_key'].isin(selected_keys)]
+
                     if final_items.empty or not sel_vendors:
-                        st.error("Gagal: Pilih minimal 1 item dan 1 vendor!")
+                        st.error("Gagal: Pilih minimal 1 item (centang) dan 1 vendor!")
                     else:
-                        with st.spinner("Mengirim data ke database..."):
-                            # Logic simpan (Master_Items & Access_Goods)
-                            # ... (Gunakan batch_save_data seperti sebelumnya)
-                            st.success("RFQ Berhasil di-publish!")
-                            st.balloons()
+                        with st.spinner("Sedang memproses RFQ..."):
+                            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            master_rows = []
+                            access_rows = []
+                            v_map = {r['vendor_name']: r['email'] for _, r in df_users.iterrows() if r['role'] == 'vendor'}
+                            
+                            for _, row in final_items.iterrows():
+                                u_id = str(uuid.uuid4())[:8]
+                                # Master_Items
+                                master_rows.append([
+                                    u_id, row.get('PR CODE',''), row.get('LOCATION',''), '', 
+                                    '', '', '', row.get('DESCRIPTION',''), row.get('DESCRIPTION 2',''),
+                                    row.get('UOM',''), row.get('QUANTITY',0), '', 'Open', ts
+                                ])
+                                # Access_Goods
+                                for v_name in sel_vendors:
+                                    v_email = v_map.get(v_name)
+                                    if v_email:
+                                        access_rows.append([v_email, row.get('PR CODE',''), u_id, "Active"])
+                            
+                            if batch_save_data("Master_Items", master_rows) and batch_save_data("Access_Goods", access_rows):
+                                st.success(f"Berhasil! RFQ terkirim.")
+                                st.session_state['selected_items_dict'] = {} # Reset
+                                st.balloons()
 
     # --- TAB 2: COMPARISON ---
     with tabs[1]:
