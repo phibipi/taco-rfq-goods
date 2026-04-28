@@ -191,7 +191,7 @@ def admin_portal():
 
                 if not final_items.empty:
                     with st.expander("📋 Lihat Daftar Item Terpilih", expanded=True):
-                        summary_cols = ['PR CODE', 'LOCATION', 'DESCRIPTION', 'QUANTITY', 'UOM']
+                        summary_cols = ['PR CODE', 'LOCATION', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                         st.dataframe(final_items[summary_cols], hide_index=True, use_container_width=True)
                         st.info(f"Total: **{len(final_items)} item** terpilih.")
                 else:
