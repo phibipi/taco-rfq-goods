@@ -139,7 +139,6 @@ def admin_portal():
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
                         df_group = df_group.reset_index(drop=True)
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
-                        widget_key = f"editor_widget_{pr_no}"
 
                         with st.expander(f"📄 PR: {pr_no} | 📍 {loc}"):
                             c1, c2, _ = st.columns([1, 1, 3])
@@ -147,57 +146,51 @@ def admin_portal():
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
                                 for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = True
-                                if widget_key in st.session_state:
-                                    del st.session_state[widget_key]
+                                    # Also update individual checkbox keys
+                                    st.session_state[f"chk_{k}"] = True
                                 st.rerun()
 
                             if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
                                 for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = False
-                                if widget_key in st.session_state:
-                                    del st.session_state[widget_key]
+                                    # Also update individual checkbox keys
+                                    st.session_state[f"chk_{k}"] = False
                                 st.rerun()
 
-                            # ✅ Build df_view — PILIH comes from the dict
-                            # The widget will persist checkbox state via its own key,
-                            # so df_view only matters on FIRST render or after forced reset
-                            df_view = df_group[
-                                ['ID_SISTEM', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
-                            ].copy()
-                            df_view.insert(
-                                0, "PILIH",
-                                [st.session_state['selected_items_dict'].get(k, False)
-                                 for k in df_view['ID_SISTEM']]
-                            )
-                            df_view = df_view.reset_index(drop=True)
+                            # Column headers
+                            h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
+                            h1.markdown("**✓**")
+                            h2.markdown("**Description**")
+                            h3.markdown("**Description 2**")
+                            h4.markdown("**Qty**")
+                            h5.markdown("**UOM**")
 
-                            # ✅ Render editor — return value has full current state
-                            edited_df = st.data_editor(
-                                df_view,
-                                hide_index=True,
-                                use_container_width=True,
-                                key=widget_key,
-                                column_config={
-                                    "ID_SISTEM": None,
-                                    "PILIH": st.column_config.CheckboxColumn(required=True),
-                                },
-                                disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM'],
-                            )
+                            # One checkbox per item row
+                            for _, item_row in df_group.iterrows():
+                                id_sistem = item_row['ID_SISTEM']
+                                col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
 
-                            # ✅ KEY FIX: write edited_df (full state) into dict.
-                            # We do NOT delete the widget key, so on next rerun
-                            # the widget restores from its own cached state correctly,
-                            # and edited_df reflects that same state — no conflict.
-                            for _, row in edited_df.iterrows():
-                                st.session_state['selected_items_dict'][row['ID_SISTEM']] = row['PILIH']
+                                checked = col1.checkbox(
+                                    label="select",
+                                    value=st.session_state['selected_items_dict'].get(id_sistem, False),
+                                    key=f"chk_{id_sistem}",
+                                    label_visibility="collapsed"
+                                )
+                                col2.write(item_row.get('DESCRIPTION', ''))
+                                col3.write(item_row.get('DESCRIPTION 2', ''))
+                                col4.write(item_row.get('QUANTITY', ''))
+                                col5.write(item_row.get('UOM', ''))
 
+                                # Reliable: checkbox state written to dict on every rerun
+                                st.session_state['selected_items_dict'][id_sistem] = checked
+
+                # --- LANGKAH 2 ---
                 st.divider()
                 col_title, col_btn = st.columns([4, 1])
                 col_title.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 if col_btn.button("🔄 Refresh", use_container_width=True):
                     st.rerun()
 
-                # ✅ This now always reflects edited_df from above
                 selected_keys = [
                     k for k, v in st.session_state['selected_items_dict'].items() if v
                 ]
@@ -212,10 +205,9 @@ def admin_portal():
                         )
                         if st.button("🚨 Reset Semua Pilihan"):
                             st.session_state['selected_items_dict'] = {}
-                            for pr_no in df_display['PR CODE'].unique():
-                                wk = f"editor_widget_{pr_no}"
-                                if wk in st.session_state:
-                                    del st.session_state[wk]
+                            for k in df_display['ID_SISTEM']:
+                                if f"chk_{k}" in st.session_state:
+                                    del st.session_state[f"chk_{k}"]
                             st.rerun()
 
                     df_u = get_data("Users")
