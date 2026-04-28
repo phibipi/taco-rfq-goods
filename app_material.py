@@ -103,12 +103,18 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel ERP", type=['xlsx'])
         
         if uploaded_file:
-            df_raw = pd.read_excel(uploaded_file)
+            # header=2 artinya baris ke-3 (index 2) akan dianggap sebagai nama kolom
+            df_raw = pd.read_excel(uploaded_file, header=2)
+            
+            # Membersihkan baris yang benar-benar kosong (jika ada)
+            df_raw = df_raw.dropna(how='all')
             
             # POKA-YOKE: Filter Status Open Otomatis
+            # Kita pakai .astype(str) untuk jaga-jaga kalau ada data non-string
             if 'Status' in df_raw.columns:
-                df_filtered = df_raw[df_raw['Status'].str.contains('Open', case=False, na=False)].copy()
+                df_filtered = df_raw[df_raw['Status'].astype(str).str.contains('Open', case=False, na=False)].copy()
             else:
+                st.warning("⚠️ Kolom 'Status' tidak ditemukan. Pastikan header ada di baris ke-3.")
                 df_filtered = df_raw.copy()
             
             # Mapping Kolom sesuai Kebutuhan TACO
