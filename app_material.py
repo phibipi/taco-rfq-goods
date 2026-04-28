@@ -110,8 +110,6 @@ def admin_portal():
             # --- INISIALISASI SESSION STATE ---
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
-            if 'editor_snapshots' not in st.session_state:
-                st.session_state['editor_snapshots'] = {}
 
             # --- FILTER DATA ---
             df_display = df_raw.copy()
@@ -122,7 +120,6 @@ def admin_portal():
                     (df_raw['QUANTITY'] > 0)
                 ].copy()
 
-            # Build stable ID_SISTEM for every row
             df_display['ID_SISTEM'] = (
                 df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
             )
@@ -141,26 +138,10 @@ def admin_portal():
                     df_to_show = df_to_show[mask]
 
                 # -------------------------------------------------------
-                # HELPER: flush editor state into selected_items_dict
-                # then rerun so review table updates immediately
-                # -------------------------------------------------------
-                def flush_editor(pr_no):
-                    widget_key = f"editor_widget_{pr_no}"
-                    widget_state = st.session_state.get(widget_key)
-                    if widget_state is None:
-                        return
-                    edited_rows = widget_state.get("edited_rows", {})
-                    snapshot = st.session_state['editor_snapshots'].get(widget_key, {})
-                    for row_idx_str, changes in edited_rows.items():
-                        row_idx = int(row_idx_str)
-                        if row_idx in snapshot:
-                            id_sistem = snapshot[row_idx]["ID_SISTEM"]
-                            new_val = changes.get("PILIH", snapshot[row_idx]["PILIH"])
-                            st.session_state['selected_items_dict'][id_sistem] = new_val
-                    st.rerun()  # Auto-refresh review table on every checkbox change
-
-                # -------------------------------------------------------
                 # RENDER PR EXPANDERS
+                # Every checkbox change triggers a natural Streamlit rerun.
+                # We sync editor → dict during that rerun, so the review
+                # table below always reflects the latest state.
                 # -------------------------------------------------------
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
@@ -186,7 +167,7 @@ def admin_portal():
                                     del st.session_state[widget_key]
                                 st.rerun()
 
-                            # Build the view DataFrame, sourcing PILIH from dict
+                            # Build view DataFrame from dict (source of truth)
                             df_view = df_group[
                                 ['ID_SISTEM', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             ].copy()
@@ -197,20 +178,11 @@ def admin_portal():
                             )
                             df_view = df_view.reset_index(drop=True)
 
-                            # Save snapshot so flush_editor can resolve row_idx → ID_SISTEM
-                            st.session_state['editor_snapshots'][widget_key] = {
-                                i: {"ID_SISTEM": row["ID_SISTEM"], "PILIH": row["PILIH"]}
-                                for i, row in df_view.iterrows()
-                            }
-
-                            # Render editor with on_change for immediate sync
-                            st.data_editor(
+                            edited_df = st.data_editor(
                                 df_view,
                                 hide_index=True,
                                 use_container_width=True,
                                 key=widget_key,
-                                on_change=flush_editor,
-                                args=(pr_no,),
                                 column_config={
                                     "ID_SISTEM": None,
                                     "PILIH": st.column_config.CheckboxColumn(required=True),
@@ -218,8 +190,17 @@ def admin_portal():
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM'],
                             )
 
+                            # ✅ KEY FIX: sync edited_df → dict during this render pass.
+                            # When user clicks a checkbox, Streamlit reruns the whole script.
+                            # At that point, edited_df already contains the new checkbox value,
+                            # so we write it to the dict here — before the review table renders.
+                            for _, row in edited_df.iterrows():
+                                st.session_state['selected_items_dict'][row['ID_SISTEM']] = row['PILIH']
+
                 # -------------------------------------------------------
-                # LANGKAH 2: REVIEW & ASSIGN VENDOR
+                # LANGKAH 2: REVIEW TABLE
+                # Renders AFTER all editors are processed above, so
+                # selected_items_dict is always up to date at this point.
                 # -------------------------------------------------------
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
@@ -238,7 +219,6 @@ def admin_portal():
                         )
                         if st.button("🚨 Reset Semua Pilihan"):
                             st.session_state['selected_items_dict'] = {}
-                            st.session_state['editor_snapshots'] = {}
                             for pr_no in df_display['PR CODE'].unique():
                                 wk = f"editor_widget_{pr_no}"
                                 if wk in st.session_state:
@@ -258,7 +238,6 @@ def admin_portal():
                         else:
                             st.success("✅ Berhasil! RFQ telah dipublish.")
                             st.session_state['selected_items_dict'] = {}
-                            st.session_state['editor_snapshots'] = {}
                             st.rerun()
                 else:
                     st.warning("Belum ada item yang dipilih dari Langkah 1.")
