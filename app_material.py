@@ -145,47 +145,53 @@ def admin_portal():
 
                 # --- RENDER LIST PR (LANGKAH 1) ---
                 with st.container(height=500, border=True):
-                    for pr_no in df_to_show['PR CODE'].unique():
+                    for pr_no in grouped_pr:
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
                         
-                        with st.expander(f"📄 {pr_no} | 📍 {loc}"):
-                            # 1. Master Checkbox
-                            sel_all_key = f"all_{pr_no}"
-                            # Pakai on_change untuk menghindari loop rerun
-                            select_all = st.checkbox("Pilih Semua", key=sel_all_key)
-                            
-                            # 2. Data Preparation
-                            df_view = df_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']].copy()
-                            df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
-                            
-                            # 3. Sinkronkan Memori Berdasarkan Tombol "Pilih Semua"
-                            if select_all:
-                                for k in df_view['unique_key']: st.session_state['selected_items_dict'][k] = True
-                            elif not select_all and st.session_state.get(f"prev_{sel_all_key}", False):
-                                # Jika baru saja di-uncheck "Pilih Semua", kosongkan item PR ini saja
-                                for k in df_view['unique_key']: st.session_state['selected_items_dict'][k] = False
-                            
-                            # Simpan status untuk deteksi perubahan klik berikutnya
-                            st.session_state[f"prev_{sel_all_key}"] = select_all
+                        # 1. Identifikasi Item
+                        df_view = df_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']].copy()
+                        df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
+                        keys_in_pr = df_view['unique_key'].tolist()
 
-                            # 4. Ambil status terbaru dari memori
-                            current_bools = [st.session_state['selected_items_dict'].get(k, False) for k in df_view['unique_key']]
+                        with st.expander(f"📄 {pr_no} | 📍 {loc}"):
+                            # --- LOGIKA MASTER CHECKBOX CERDAS ---
+                            # Cek apakah SEMUA item di PR ini sudah ter-select di memori
+                            all_checked = all(st.session_state['selected_items_dict'].get(k, False) for k in keys_in_pr)
+                            
+                            sel_all_key = f"all_{pr_no}"
+                            
+                            # Tampilkan checkbox "Pilih Semua" dengan nilai berdasarkan kondisi memori
+                            select_all = st.checkbox("Pilih Semua", value=all_checked, key=sel_all_key)
+                            
+                            # Jika user nge-klik "Pilih Semua" secara manual (berbeda dengan kondisi all_checked)
+                            # Kita update memori untuk semua item di PR ini
+                            if select_all != all_checked:
+                                for k in keys_in_pr:
+                                    st.session_state['selected_items_dict'][k] = select_all
+                                st.rerun() # Refresh sekali agar tabel di bawahnya sinkron
+
+                            # 2. Siapkan data untuk editor
+                            current_bools = [st.session_state['selected_items_dict'].get(k, False) for k in keys_in_pr]
                             df_view.insert(0, "PILIH", current_bools)
 
-                            # 5. Editor Tabel (Hapus RERUN di dalam sini!)
+                            # 3. EDITOR TABEL
                             edited_df = st.data_editor(
                                 df_view.drop(columns=['unique_key']),
                                 hide_index=True,
                                 use_container_width=True,
-                                key=f"editor_{pr_no}", # Key harus unik dan stabil
+                                key=f"editor_{pr_no}",
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             )
 
-                            # 6. Update memori manual tanpa RERUN otomatis
+                            # 4. SINKRONISASI MANUAL (Jika user un-check 1 baris saja)
                             for _, row in edited_df.iterrows():
                                 k_item = str(pr_no) + "_" + str(row['DESCRIPTION'])
-                                st.session_state['selected_items_dict'][k_item] = row['PILIH']
+                                # Jika ada perubahan di tabel (misal uncheck 1 baris)
+                                if st.session_state['selected_items_dict'].get(k_item) != row['PILIH']:
+                                    st.session_state['selected_items_dict'][k_item] = row['PILIH']
+                                    # Cek: jika ini uncheck, maka master checkbox di rerun berikutnya otomatis False
+                                    st.rerun() 
 
                 # --- LANGKAH 2: REVIEW ---
                 st.divider()
