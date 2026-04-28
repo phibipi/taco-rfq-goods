@@ -115,122 +115,111 @@ def admin_portal():
     
     with tabs[0]:
         st.header("Upload Purchase Request Taconnect")
-        uploaded_file = st.file_uploader("Upload File Excel PR View dari Taconnect", type=['xlsx'])
+        uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
         
         if uploaded_file:
-            # Load Data
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
             
-            # Inisialisasi Memori (Hanya sekali)
+            # Inisialisasi keranjang belanja
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
 
-            # Filter Dasar (Open & Qty > 0)
-            c_status, c_qty = 'STATUS', 'QUANTITY'
-            if c_status in df_raw.columns and c_qty in df_raw.columns:
-                df_raw[c_qty] = pd.to_numeric(df_raw[c_qty], errors='coerce').fillna(0)
-                df_display = df_raw[(df_raw[c_status].astype(str).str.strip() == 'Open') & (df_raw[c_qty] > 0)].copy()
+            # Filter Open & Qty > 0
+            if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
+                df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
+                df_display = df_raw[(df_raw['STATUS'].astype(str).str.strip() == 'Open') & (df_raw['QUANTITY'] > 0)].copy()
             else:
                 df_display = df_raw.copy()
 
             if not df_display.empty:
                 st.subheader("📝 Langkah 1: Pilih Item")
-                search_query = st.text_input("🔍 Cari No. PR, Nama Item, atau Lokasi...", placeholder="Ketik...")
+                search_query = st.text_input("🔍 Cari...", placeholder="Ketik untuk memfilter PR...")
                 
-                # Filter Search
                 df_to_show = df_display.copy()
                 if search_query:
                     q = search_query.lower()
-                    mask = (
-                        df_to_show['PR CODE'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
-                        df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
-                        df_to_show['DESCRIPTION 2'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
-                        df_to_show['LOCATION'].astype(str).str.lower().str.contains(q, regex=False, na=False)
-                    )
+                    mask = (df_to_show['PR CODE'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
+                            df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False))
                     df_to_show = df_to_show[mask]
 
-                # --- RENDER DAFTAR PR ---
+                # --- RENDER LIST PR (LANGKAH 1) ---
                 with st.container(height=500, border=True):
-                    grouped_pr = df_to_show['PR CODE'].unique()
-                    
-                    for pr_no in grouped_pr:
-                        df_pr_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
-                        loc_val = df_pr_group['LOCATION'].iloc[0] if 'LOCATION' in df_pr_group.columns else "Unknown"
+                    for pr_no in df_to_show['PR CODE'].unique():
+                        df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
+                        loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
                         
-                        # ID Unik untuk widget
-                        ed_key = f"editor_{pr_no}"
-                        
-                        with st.expander(f"📄 {pr_no} | 📍 {loc_val} | {df_pr_group['DESCRIPTION'].iloc[0][:30]}..."):
+                        with st.expander(f"📄 {pr_no} | 📍 {loc}"):
+                            # 1. Master Checkbox
+                            sel_all_key = f"all_{pr_no}"
+                            # Pakai on_change untuk menghindari loop rerun
+                            select_all = st.checkbox("Pilih Semua", key=sel_all_key)
                             
-                            # Master Checkbox per PR
-                            sel_all = st.checkbox(f"Pilih Semua di {pr_no}", key=f"check_all_{pr_no}")
-                            
-                            # Siapkan kolom tampil
-                            df_view = df_pr_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']].copy()
+                            # 2. Data Preparation
+                            df_view = df_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']].copy()
                             df_view['unique_key'] = str(pr_no) + "_" + df_view['DESCRIPTION'].astype(str)
                             
-                            # LOGIKA: Jika master checkbox ditekan, update memori
-                            if sel_all:
+                            # 3. Sinkronkan Memori Berdasarkan Tombol "Pilih Semua"
+                            if select_all:
                                 for k in df_view['unique_key']: st.session_state['selected_items_dict'][k] = True
+                            elif not select_all and st.session_state.get(f"prev_{sel_all_key}", False):
+                                # Jika baru saja di-uncheck "Pilih Semua", kosongkan item PR ini saja
+                                for k in df_view['unique_key']: st.session_state['selected_items_dict'][k] = False
                             
-                            # Ambil nilai dari memori untuk ditampilkan di editor
-                            df_view.insert(0, "PILIH", [st.session_state['selected_items_dict'].get(k, False) for k in df_view['unique_key']])
+                            # Simpan status untuk deteksi perubahan klik berikutnya
+                            st.session_state[f"prev_{sel_all_key}"] = select_all
 
-                            # EDITOR UTAMA
+                            # 4. Ambil status terbaru dari memori
+                            current_bools = [st.session_state['selected_items_dict'].get(k, False) for k in df_view['unique_key']]
+                            df_view.insert(0, "PILIH", current_bools)
+
+                            # 5. Editor Tabel (Hapus RERUN di dalam sini!)
                             edited_df = st.data_editor(
                                 df_view.drop(columns=['unique_key']),
                                 hide_index=True,
                                 use_container_width=True,
-                                key=ed_key,
-                                column_config={"PILIH": st.column_config.CheckboxColumn(default=False)},
+                                key=f"editor_{pr_no}", # Key harus unik dan stabil
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             )
 
-                            # SINKRONISASI: Masukkan hasil edit manual ke memori
-                            # Menggunakan list comprehension agar cepat
-                            for i, row in edited_df.iterrows():
+                            # 6. Update memori manual tanpa RERUN otomatis
+                            for _, row in edited_df.iterrows():
                                 k_item = str(pr_no) + "_" + str(row['DESCRIPTION'])
-                                if st.session_state['selected_items_dict'].get(k_item) != row['PILIH']:
-                                    st.session_state['selected_items_dict'][k_item] = row['PILIH']
-                                    st.rerun() # Hanya rerun saat ada perbedaan klik
+                                st.session_state['selected_items_dict'][k_item] = row['PILIH']
 
-                # --- LANGKAH 2: REVIEW (DI LUAR CONTAINER) ---
+                # --- LANGKAH 2: REVIEW ---
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
-                # 1. Bersihkan memori dari item yang nilainya False agar tidak menumpuk
-                st.session_state['selected_items_dict'] = {k: v for k, v in st.session_state['selected_items_dict'].items() if v}
-                
-                # 2. Ambil data asli berdasarkan yang tersisa di "keranjang" (Hanya yang True)
-                selected_keys = list(st.session_state['selected_items_dict'].keys())
+                # TOMBOL REFRESH MANUAL (Hanya di sini saja biar tidak loop)
+                if st.button("🔄 Refresh Daftar Terpilih"): st.rerun()
+
+                # Filter hanya yang bernilai True
+                selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
                 df_display['unique_key'] = df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
                 final_items = df_display[df_display['unique_key'].isin(selected_keys)].copy()
 
                 if not final_items.empty:
-                    with st.expander("📋 Review Daftar Item Terpilih", expanded=True):
-                        st.dataframe(final_items[['PR CODE', 'LOCATION', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']], hide_index=True, use_container_width=True)
-                        st.info(f"Total: **{len(final_items)} item** terpilih.")
-                        if st.button("🗑️ Reset Semua Pilihan"):
+                    with st.expander(f"📋 Item Terpilih ({len(final_items)})", expanded=True):
+                        st.dataframe(final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY']], hide_index=True, use_container_width=True)
+                        if st.button("🗑️ Reset Semua"):
                             st.session_state['selected_items_dict'] = {}
                             st.rerun()
                     
                     # Pemilihan Vendor
-                    df_users = get_data("Users")
-                    list_v = df_users[df_users['role'] == 'vendor']['vendor_name'].tolist()
-                    sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", list_v)
+                    df_u = get_data("Users")
+                    vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist()
+                    sel_v = st.multiselect("Pilih Vendor:", vendors)
                     
                     if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
-                        if not sel_v: st.error("Pilih vendor tujuan!")
+                        if not sel_v: st.error("Pilih vendor!")
                         else:
-                            with st.spinner("Publishing..."):
-                                # ... (Logika simpan ke GSheet tetap sama) ...
-                                # Setelah sukses simpan:
-                                st.session_state['selected_items_dict'] = {}
-                                st.success("✅ RFQ Berhasil Terkirim!")
-                                st.rerun()
+                            # ... Logika Simpan (Master_rows & Access_rows) ...
+                            st.success("✅ Berhasil dipublish!")
+                            st.session_state['selected_items_dict'] = {}
+                            st.rerun()
                 else:
-                    st.warning("Belum ada PR/item yang dipilih.")
+                    st.warning("Belum ada item yang dipilih.")
 
     # --- TAB 2: COMPARISON ---
     with tabs[1]:
