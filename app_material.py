@@ -275,8 +275,7 @@ def admin_portal():
                 how='left'
             )
         
-        # --- PERBAIKAN DI SINI ---
-        # Cek apakah kolomnya bernama 'pr_number' atau 'pr_number_x' 
+
         # (biasanya di sheet Price_Goods kamu pakai 'pr_number')
             if 'pr_number' in df_merged.columns:
                 pr_list = df_merged['pr_number'].unique()
