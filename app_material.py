@@ -35,7 +35,13 @@ def get_data(sheet_name):
         try:
             ws = sh.worksheet(sheet_name)
             data = ws.get_all_records()
-            return pd.DataFrame(data)
+            df = pd.DataFrame(data)
+            
+            # --- PENGAMAN HEADER ---
+            # Ini akan mengubah 'Email', 'EMAIL', atau ' email ' jadi 'email' secara otomatis
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            
+            return df
         except:
             return pd.DataFrame()
     return pd.DataFrame()
@@ -65,17 +71,28 @@ def show_login():
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         with st.container(border=True):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
+            # Kita bersihkan input user (hapus spasi & paksa huruf kecil)
+            email_input = st.text_input("Email").strip().lower()
+            password_input = st.text_input("Password", type="password").strip()
+            
             if st.button("Masuk", type="primary", use_container_width=True):
                 df_users = get_data("Users")
+                
                 if not df_users.empty:
-                    user = df_users[(df_users['email'] == email) & (df_users['password'].astype(str) == password)]
+                    # Kita cari user tanpa peduli huruf besar/kecil di Sheets
+                    # Karena get_data sudah memaksa kolom jadi kecil, kita cari 'email' dan 'password'
+                    user = df_users[
+                        (df_users['email'].astype(str).str.lower() == email_input) & 
+                        (df_users['password'].astype(str) == password_input)
+                    ]
+                    
                     if not user.empty:
                         st.session_state['user_info'] = user.iloc[0].to_dict()
                         st.rerun()
                     else:
-                        st.error("Email atau Password salah.")
+                        st.error("Email atau Password salah. Cek kembali data di sheet 'Users'.")
+                else:
+                    st.error("Data User tidak ditemukan atau koneksi bermasalah.")
 
 def show_dashboard():
     user = st.session_state['user_info']
