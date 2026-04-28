@@ -137,24 +137,22 @@ def admin_portal():
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
-                        df_group = df_group.reset_index(drop=True)
+                        df_group = df_group.reset_index(drop=True)  # index is now 0,1,2...
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
 
                         with st.expander(f"📄 PR: {pr_no} | 📍 {loc}"):
                             c1, c2, _ = st.columns([1, 1, 3])
 
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
-                                for k in df_group['ID_SISTEM']:
+                                for idx, k in enumerate(df_group['ID_SISTEM']):
                                     st.session_state['selected_items_dict'][k] = True
-                                    # Also update individual checkbox keys
-                                    st.session_state[f"chk_{k}"] = True
+                                    st.session_state[f"chk_{pr_no}_{idx}"] = True
                                 st.rerun()
 
                             if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
-                                for k in df_group['ID_SISTEM']:
+                                for idx, k in enumerate(df_group['ID_SISTEM']):
                                     st.session_state['selected_items_dict'][k] = False
-                                    # Also update individual checkbox keys
-                                    st.session_state[f"chk_{k}"] = False
+                                    st.session_state[f"chk_{pr_no}_{idx}"] = False
                                 st.rerun()
 
                             # Column headers
@@ -165,15 +163,15 @@ def admin_portal():
                             h4.markdown("**Qty**")
                             h5.markdown("**UOM**")
 
-                            # One checkbox per item row
-                            for _, item_row in df_group.iterrows():
+                            # One checkbox per item row — key uses pr_no + row index
+                            for idx, item_row in df_group.iterrows():
                                 id_sistem = item_row['ID_SISTEM']
                                 col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
 
                                 checked = col1.checkbox(
                                     label="select",
                                     value=st.session_state['selected_items_dict'].get(id_sistem, False),
-                                    key=f"chk_{id_sistem}",
+                                    key=f"chk_{pr_no}_{idx}",
                                     label_visibility="collapsed"
                                 )
                                 col2.write(item_row.get('DESCRIPTION', ''))
@@ -181,7 +179,7 @@ def admin_portal():
                                 col4.write(item_row.get('QUANTITY', ''))
                                 col5.write(item_row.get('UOM', ''))
 
-                                # Reliable: checkbox state written to dict on every rerun
+                                # Write checkbox state directly into dict — reliable every rerun
                                 st.session_state['selected_items_dict'][id_sistem] = checked
 
                 # --- LANGKAH 2 ---
@@ -205,9 +203,9 @@ def admin_portal():
                         )
                         if st.button("🚨 Reset Semua Pilihan"):
                             st.session_state['selected_items_dict'] = {}
-                            for k in df_display['ID_SISTEM']:
-                                if f"chk_{k}" in st.session_state:
-                                    del st.session_state[f"chk_{k}"]
+                            keys_to_del = [k for k in st.session_state if k.startswith("chk_")]
+                            for k in keys_to_del:
+                                del st.session_state[k]
                             st.rerun()
 
                     df_u = get_data("Users")
@@ -223,6 +221,9 @@ def admin_portal():
                         else:
                             st.success("✅ Berhasil! RFQ telah dipublish.")
                             st.session_state['selected_items_dict'] = {}
+                            keys_to_del = [k for k in st.session_state if k.startswith("chk_")]
+                            for k in keys_to_del:
+                                del st.session_state[k]
                             st.rerun()
                 else:
                     st.warning("Belum ada item yang dipilih dari Langkah 1.")
