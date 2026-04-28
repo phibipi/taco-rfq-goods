@@ -142,58 +142,63 @@ def admin_portal():
                             df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False))
                     df_to_show = df_to_show[mask]
 
-                # --- RENDER LIST PR ---
+                # --- RENDER LIST PR (LANGKAH 1) ---
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy()
-                        # ID_SISTEM adalah kunci unik agar tidak terjadi IndexError
+                        # Pastikan ID Unik per item
                         df_group['ID_SISTEM'] = str(pr_no) + "_" + df_group['DESCRIPTION'].astype(str)
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
 
                         with st.expander(f"📄 PR: {pr_no} | 📍 {loc}"):
-                            # TOMBOL SEBAGAI TRIGGER (Bukan Checkbox agar tidak menimpa manual edit)
-                            col1, col2, _ = st.columns([1, 1, 3])
+                            # 1. TOMBOL AKSI (TRIGGER SEKALI JALAN)
+                            c1, c2, _ = st.columns([1, 1, 3])
                             
-                            if col1.button("✅ Pilih Semua", key=f"btn_all_{pr_no}"):
+                            if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
                                 for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = True
                                 st.rerun()
                                 
-                            if col2.button("🗑️ Hapus Semua", key=f"btn_none_{pr_no}"):
+                            if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
                                 for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = False
                                 st.rerun()
 
-                            # Persiapkan Tabel
+                            # 2. KONSTRUKSI DATA UNTUK EDITOR
+                            # Kita buat DataFrame view yang kolom 'PILIH'-nya diambil dari memori
                             df_view = df_group[['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM', 'ID_SISTEM']].copy()
-                            # Ambil nilai Pilihan dari memori
                             df_view.insert(0, "PILIH", [st.session_state['selected_items_dict'].get(k, False) for k in df_view['ID_SISTEM']])
 
-                            # EDITOR TABEL
+                            # 3. DATA EDITOR (TANPA RERUN DI DALAM LOOP)
+                            # PENTING: Kita gunakan on_change untuk memproses data SETELAH user selesai klik
                             edited_df = st.data_editor(
                                 df_view,
                                 hide_index=True,
                                 use_container_width=True,
-                                key=f"ed_{pr_no}",
+                                key=f"editor_widget_{pr_no}", # Key widget tetap stabil
                                 column_config={
-                                    "ID_SISTEM": None, # Sembunyikan kolom ID
+                                    "ID_SISTEM": None, 
                                     "PILIH": st.column_config.CheckboxColumn(required=True)
                                 },
                                 disabled=['DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']
                             )
 
-                            # SINKRONISASI MANUAL (Hanya update yang berubah)
+                            # 4. SINKRONISASI MEMORI (UPDATE SILENT)
+                            # Kita update memori tanpa st.rerun() di sini agar tidak memicu reset widget
                             for _, row in edited_df.iterrows():
                                 k_item = row['ID_SISTEM']
-                                if st.session_state['selected_items_dict'].get(k_item, False) != row['PILIH']:
-                                    st.session_state['selected_items_dict'][k_item] = row['PILIH']
-                                    st.rerun()
+                                st.session_state['selected_items_dict'][k_item] = row['PILIH']
 
                 # --- LANGKAH 2: REVIEW ---
                 st.divider()
                 st.subheader("🎯 Langkah 2: Review & Assign Vendor")
                 
-                # Ambil hanya yang bernilai True
+                # TOMBOL REFRESH MANUAL (Hanya 1 tombol ini untuk update tabel bawah)
+                # Ini cara paling profesional agar editor di atas tidak kaget/reset
+                if st.button("🔄 Update Review & Daftar Vendor", type="secondary", use_container_width=True):
+                    st.rerun()
+
+                # Filter item yang terpilih
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
                 df_display['ID_SISTEM'] = df_display['PR CODE'].astype(str) + "_" + df_display['DESCRIPTION'].astype(str)
                 final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
@@ -205,6 +210,7 @@ def admin_portal():
                             st.session_state['selected_items_dict'] = {}
                             st.rerun()
                     
+                              
                     df_u = get_data("Users")
                     vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
                     sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
