@@ -8,7 +8,7 @@ import io
 import uuid
 
 # --- CONFIG ---
-st.set_page_config(page_title="TACO Goods Procurement", layout="wide", page_icon="📦")
+st.set_page_config(page_title="TACO Procurement Hub", layout="wide", page_icon="🏢")
 SPREADSHEET_ID_GOODS = "1nuU8s1ahNfQsCV-zdIh5QiiLuMc8MgJQWxl1Op3eMD0"
 
 # --- DATABASE CONNECTION ---
@@ -21,8 +21,7 @@ def connect_to_gsheet():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         elif os.path.exists("kunci_goods.json"):
             creds = ServiceAccountCredentials.from_json_keyfile_name("kunci_goods.json", scope)
-        else:
-            return None
+        else: return None
         client = gspread.authorize(creds)
         return client.open_by_key(SPREADSHEET_ID_GOODS)
     except Exception as e:
@@ -38,32 +37,60 @@ def get_data(sheet_name):
             df = pd.DataFrame(data)
             df.columns = [str(c).strip().lower() for c in df.columns]
             return df
-        except:
-            return pd.DataFrame()
+        except: return pd.DataFrame()
     return pd.DataFrame()
 
-def batch_save_data(sheet_name, data_list):
-    sh = connect_to_gsheet()
-    if sh:
-        ws = sh.worksheet(sheet_name)
-        ws.append_rows(data_list)
-        return True
-    return False
+# --- CALLBACK UNTUK CHECKBOX (SMART UNIQUE ID) ---
+def sync_checkbox(id_sistem, widget_key):
+    st.session_state['selected_items_dict'][id_sistem] = st.session_state[widget_key]
 
 # --- MAIN APP LOGIC ---
 def main():
-    if 'user_info' not in st.session_state:
-        st.session_state['user_info'] = None
-    if 'selected_items_dict' not in st.session_state:
-        st.session_state['selected_items_dict'] = {}
-        
-    if st.session_state['user_info'] is None:
+    # State Inisialisasi
+    if 'user_info' not in st.session_state: st.session_state['user_info'] = None
+    if 'app_mode' not in st.session_state: st.session_state['app_mode'] = "Landing"
+    if 'selected_items_dict' not in st.session_state: st.session_state['selected_items_dict'] = {}
+    if 'df_raw_draft' not in st.session_state: st.session_state['df_raw_draft'] = None
+
+    # 1. Halaman Induk (Sebelum Login)
+    if st.session_state['app_mode'] == "Landing":
+        show_landing_page()
+    
+    # 2. Halaman Login (Setelah pilih Rawmat)
+    elif st.session_state['user_info'] is None:
         show_login()
+    
+    # 3. Halaman Dashboard (Setelah Login)
     else:
         show_dashboard()
 
+def show_landing_page():
+    st.title("🏢 TACO Procurement Hub")
+    st.subheader("Pilih Modul Kerja:")
+    st.write("---")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        with st.container(border=True):
+            st.markdown("### 📦 Rawmat & Sparepart")
+            st.write("Pengadaan barang, sparepart mesin, dan bahan baku.")
+            if st.button("Masuk Modul Rawmat", use_container_width=True, type="primary"):
+                st.session_state['app_mode'] = "Rawmat_Login"
+                st.rerun()
+                
+    with c2:
+        with st.container(border=True):
+            st.markdown("### 🚛 Transport")
+            st.write("Pengadaan jasa angkutan dan logistik.")
+            # Link ke Apps Transport
+            st.link_button("Buka Modul Transport ↗️", "https://taco-transport.streamlit.app", use_container_width=True)
+
 def show_login():
-    st.title("🏢 TACO E-Procurement (Goods)")
+    if st.button("⬅️ Kembali"):
+        st.session_state['app_mode'] = "Landing"
+        st.rerun()
+        
+    st.title("🔐 Login Modul Rawmat")
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         with st.container(border=True):
@@ -71,218 +98,107 @@ def show_login():
             password_input = st.text_input("Password", type="password").strip()
             if st.button("Masuk", type="primary", use_container_width=True):
                 df_users = get_data("Users")
-                if not df_users.empty:
-                    user = df_users[
-                        (df_users['email'].astype(str).str.lower() == email_input) &
-                        (df_users['password'].astype(str) == password_input)
-                    ]
-                    if not user.empty:
-                        st.session_state['user_info'] = user.iloc[0].to_dict()
-                        st.rerun()
-                    else:
-                        st.error("Email atau Password salah.")
+                user = df_users[(df_users['email'].astype(str).str.lower() == email_input) & 
+                                (df_users['password'].astype(str) == password_input)]
+                if not user.empty:
+                    st.session_state['user_info'] = user.iloc[0].to_dict()
+                    st.rerun()
                 else:
-                    st.error("Data User tidak ditemukan atau koneksi bermasalah.")
+                    st.error("Email atau Password salah.")
 
 def show_dashboard():
     user = st.session_state['user_info']
-    role = user['role']
     st.sidebar.title(f"👋 {user.get('vendor_name', 'User')}")
     st.sidebar.info(f"Modul: **Rawmat & Sparepart**")
+    
     if st.sidebar.button("Log Out"):
+        # Clear session tapi jangan hapus app_mode supaya balik ke landing
         st.session_state['user_info'] = None
-        st.session_state['selected_items_dict'] = {}
+        st.session_state['app_mode'] = "Landing"
         st.rerun()
-    if role == 'admin':
+
+    if user['role'] == 'admin':
         admin_portal()
     else:
         vendor_portal(user['email'])
 
-# --- CALLBACK TETAP SAMA TAPI PAKAI ID DARI KOLOM NO ---
-def sync_checkbox(id_sistem, widget_key):
-    st.session_state['selected_items_dict'][id_sistem] = st.session_state[widget_key]
-
 def admin_portal():
-    tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History Search"])
+    tabs = st.tabs(["📥 Import PR List", "📊 Monitoring", "🔍 History"])
 
     with tabs[0]:
-        st.header("Upload Purchase Request Taconnect")
-        uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
+        # --- FITUR RESUME UPLOAD ---
+        if st.session_state['df_raw_draft'] is not None:
+            with st.info("ℹ️ Kamu punya draft upload sebelumnya."):
+                ca, cb = st.columns(2)
+                if ca.button("✅ Gunakan File Terakhir", use_container_width=True):
+                    uploaded_file = "RESUME"
+                if cb.button("❌ Upload Baru", use_container_width=True):
+                    st.session_state['df_raw_draft'] = None
+                    st.session_state['selected_items_dict'] = {}
+                    st.rerun()
+        
+        if st.session_state['df_raw_draft'] is None:
+            raw_upload = st.file_uploader("Upload File Excel Taconnect", type=['xlsx'])
+            if raw_upload:
+                df = pd.read_excel(raw_upload, header=2)
+                df.columns = [str(c).strip().upper() for c in df.columns]
+                # Gunakan kolom NO sebagai ID unik (Ide cerdas kamu!)
+                df['ID_SISTEM'] = df['NO'].astype(str) if 'NO' in df.columns else df.index.astype(str)
+                st.session_state['df_raw_draft'] = df
+                st.rerun()
+            return
 
-        if uploaded_file:
-            # Baca Excel, header ada di baris ke-3 (index 2)
-            df_raw = pd.read_excel(uploaded_file, header=2)
-            df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
+        df_display = st.session_state['df_raw_draft']
+        
+        # --- FITUR HIGHLIGHT RFQ (SUDAH PERNAH DIKIRIM) ---
+        df_history = get_data("Master_Items")
+        history_keys = []
+        if not df_history.empty:
+            # Gabungkan PR Code dan Nama Item untuk cek duplikasi history
+            history_keys = (df_history['pr_number'].astype(str) + df_history['item_name'].astype(str)).tolist()
 
-            # --- KUNCI UTAMA: Ambil ID dari kolom 'NO' ---
-            # Pastikan kolom 'NO' ada, kalau tidak ada kita pakai index sebagai cadangan
-            if 'NO' in df_raw.columns:
-                df_raw['ID_SISTEM'] = df_raw['NO'].astype(str)
-            else:
-                df_raw['ID_SISTEM'] = df_raw.index.astype(str)
-
-            if 'selected_items_dict' not in st.session_state:
-                st.session_state['selected_items_dict'] = {}
-
-            df_display = df_raw.copy()
-            if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
-                df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
-                df_display = df_raw[
-                    (df_raw['STATUS'].astype(str).str.strip() == 'Open') &
-                    (df_raw['QUANTITY'] > 0)
-                ].copy()
-
-            if not df_display.empty:
-                st.subheader("📝 Langkah 1: Pilih Item")
-                search_query = st.text_input("🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini...")
-
-                df_to_show = df_display.copy()
-                if search_query:
-                    q = search_query.lower()
-                    mask = (
-                        df_to_show['PR CODE'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
-                        df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False)
-                    )
-                    df_to_show = df_to_show[mask]
-
-                with st.container(height=550, border=True):
-                    for pr_no in df_to_show['PR CODE'].unique():
-                        df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy().reset_index(drop=True)
-                        loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
-
-                        with st.expander(f"📄 PR: {pr_no} | 📍 {loc}"):
-                            c1, c2, _ = st.columns([1, 1, 3])
-
-                            if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
-                                for k in df_group['ID_SISTEM']:
-                                    st.session_state['selected_items_dict'][k] = True
-                                st.rerun()
-
-                            if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
-                                for k in df_group['ID_SISTEM']:
-                                    st.session_state['selected_items_dict'][k] = False
-                                st.rerun()
-
-                            h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
-                            h1.markdown("**✓**")
-                            h2.markdown("**Description**")
-                            h3.markdown("**Description 2**")
-                            h4.markdown("**Qty**")
-                            h5.markdown("**UOM**")
-
-                            for idx, item_row in df_group.iterrows():
-                                id_sistem = item_row['ID_SISTEM']
-                                # Widget key pakai id_sistem (kolom NO) agar abadi
-                                widget_key = f"chk_{id_sistem}"
-                                
-                                if widget_key not in st.session_state:
-                                    st.session_state[widget_key] = st.session_state['selected_items_dict'].get(id_sistem, False)
-
-                                col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
-
-                                col1.checkbox(
-                                    label="select",
-                                    key=widget_key,
-                                    value=st.session_state['selected_items_dict'].get(id_sistem, False),
-                                    on_change=sync_checkbox,
-                                    args=(id_sistem, widget_key),
-                                    label_visibility="collapsed"
-                                )
-                                col2.write(item_row.get('DESCRIPTION', ''))
-                                col3.write(item_row.get('DESCRIPTION 2', ''))
-                                col4.write(item_row.get('QUANTITY', ''))
-                                col5.write(item_row.get('UOM', ''))
-
-                # --- LANGKAH 2 (Review) ---
-                st.divider()
-                st.subheader("🎯 Langkah 2: Review & Assign Vendor")
-                
-                selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
-                
-                # Filter final_items pakai ID_SISTEM (Kolom NO)
-                final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
-
-                if not final_items.empty:
-                    with st.expander(f"📋 Item Terpilih ({len(final_items)} item)", expanded=True):
-                        st.dataframe(
-                            final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']],
-                            hide_index=True,
-                            use_container_width=True
-                        )
-                        if st.button("🚨 Reset Semua Pilihan"):
-                            st.session_state['selected_items_dict'] = {}
-                            for k in list(st.session_state.keys()):
-                                if k.startswith("chk_"): del st.session_state[k]
-                            st.rerun()
+        st.subheader("📝 Langkah 1: Pilih Item")
+        # Loop Expander per PR
+        for pr_no in df_display['PR CODE'].unique():
+            df_group = df_display[df_display['PR CODE'] == pr_no].copy().reset_index(drop=True)
+            with st.expander(f"📄 PR: {pr_no}"):
+                for idx, row in df_group.iterrows():
+                    id_s = row['ID_SISTEM']
+                    w_key = f"chk_{id_s}"
                     
+                    # Cek apakah sudah pernah di RFQ (Highlight Hijau)
+                    is_sent = (str(row['PR CODE']) + str(row['DESCRIPTION'])) in history_keys
+                    bg_color = "#d1fae5" if is_sent else "transparent"
+                    
+                    st.markdown(f"""<div style="background-color:{bg_color}; padding:8px; border-radius:5px; margin-bottom:2px; border: 1px solid #eee;">""", unsafe_allow_html=True)
+                    c1, c2, c3, c4 = st.columns([0.5, 4, 1, 1])
+                    
+                    c1.checkbox("ok", key=w_key, 
+                                value=st.session_state['selected_items_dict'].get(id_s, False),
+                                on_change=sync_checkbox, args=(id_s, w_key), label_visibility="collapsed")
+                    
+                    label_sent = " ✅ (SENT)" if is_sent else ""
+                    c2.write(f"**{row['DESCRIPTION']}**{label_sent}")
+                    c3.write(f"{row['QUANTITY']}")
+                    c4.write(f"{row['UOM']}")
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-                    df_u = get_data("Users")
-                    vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
-                    sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
+        # --- LANGKAH 2: REVIEW ---
+        st.divider()
+        selected_ids = [k for k, v in st.session_state['selected_items_dict'].items() if v]
+        df_final = df_display[df_display['ID_SISTEM'].isin(selected_ids)]
 
-                    if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
-                        if not sel_v:
-                            st.error("Silakan pilih minimal satu vendor.")
-                        else:
-                            # Logika simpan GSheet bisa ditaruh di sini
-                            st.success("✅ Berhasil! RFQ telah dipublish.")
-                            st.session_state['selected_items_dict'] = {}
-                            for k in list(st.session_state.keys()):
-                                if k.startswith("chk_"): del st.session_state[k]
-                            st.rerun()
-                else:
-                    st.warning("Belum ada item yang dipilih dari Langkah 1.")
-
-    # --- TAB LAINNYA ---
-    with tabs[1]:
-        st.header("Price Comparison Analysis")
-        df_prices = get_data("Price_Goods")
-        if df_prices.empty:
-            st.info("Belum ada penawaran masuk dari vendor.")
-        else:
-            df_master = get_data("Master_Items")
-            df_merged = pd.merge(df_prices, df_master[['id_unique', 'item_name', 'specification', 'qty', 'uom']], on='id_unique', how='left')
-            if 'pr_number' in df_merged.columns:
-                pr_list = df_merged['pr_number'].unique()
-                sel_pr = st.selectbox("Pilih Nomor PR:", pr_list)
-                sub_comp = df_merged[df_merged['pr_number'] == sel_pr]
-                pivot_df = sub_comp.pivot_table(index=['item_name', 'specification', 'qty', 'uom'], columns='vendor_email', values='unit_price', aggfunc='min').reset_index()
-                st.write(f"### Perbandingan Harga PR: {sel_pr}")
-                identitas_cols = ['item_name', 'specification', 'qty', 'uom']
-                harga_cols = [c for c in pivot_df.columns if c not in identitas_cols]
-                if harga_cols:
-                    st.dataframe(pivot_df.style.highlight_min(axis=1, color='#d1fae5', subset=harga_cols), use_container_width=True)
-                else:
-                    st.dataframe(pivot_df, use_container_width=True)
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    pivot_df.to_excel(writer, index=False)
-                st.download_button("📥 Download Report Excel", output.getvalue(), f"Comparison_{sel_pr}.xlsx")
+        if not df_final.empty:
+            st.subheader(f"🎯 Langkah 2: Assign Vendor ({len(df_final)} item)")
+            st.dataframe(df_final[['PR CODE', 'DESCRIPTION', 'QUANTITY', 'UOM']], hide_index=True)
+            if st.button("🚀 Publish RFQ"):
+                st.success("RFQ Berhasil Dikirim!")
+                # Reset setelah sukses
+                st.session_state['selected_items_dict'] = {}
+                st.rerun()
 
 def vendor_portal(email):
-    st.header("📝 Form Penawaran Harga")
-    df_acc = get_data("Access_Goods")
-    my_acc = df_acc[df_acc['vendor_email'] == email]
-    if my_acc.empty:
-        st.info("Tidak ada permintaan RFQ untuk Anda.")
-        return
-    df_master = get_data("Master_Items")
-    df_my_items = df_master[df_master['id_unique'].isin(my_acc['id_unique'])]
-    display_cols = ['id_unique', 'pr_number', 'location', 'item_name', 'specification', 'uom', 'qty']
-    for pr in df_my_items['pr_number'].unique():
-        with st.expander(f"📋 PR: {pr}", expanded=True):
-            sub_items = df_my_items[df_my_items['pr_number'] == pr][display_cols].copy()
-            sub_items['Unit_Price'] = 0.0
-            sub_items['Brand'] = "-"
-            sub_items['Lead_Time_Days'] = 7
-            edited = st.data_editor(sub_items, key=f"edit_{pr}", hide_index=True, use_container_width=True, disabled=display_cols)
-            if st.button(f"Kirim Penawaran PR {pr}", key=f"save_{pr}"):
-                price_rows = []
-                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                for _, r in edited.iterrows():
-                    price_rows.append([f"P-{uuid.uuid4().hex[:6]}", pr, email, r['id_unique'], r['Unit_Price'], r['Brand'], r['Lead_Time_Days'], ts, "Open"])
-                if batch_save_data("Price_Goods", price_rows):
-                    st.success("Berhasil mengirim penawaran!")
+    st.write("Halaman Vendor")
 
 if __name__ == "__main__":
     main()
