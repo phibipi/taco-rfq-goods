@@ -159,8 +159,9 @@ def admin_portal():
                     for pr_no in df_to_show['PR CODE'].unique():
                         df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy().reset_index(drop=True)
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
+                        prio = df_group['PRIORITY STATUS'].iloc[0] if 'PRIORITY STATUS' in df_group.columns else "-"
 
-                        with st.expander(f"📄 PR: {pr_no} | 📍 {loc}"):
+                        with st.expander(f"📄 PR: {pr_no} | 📍 {loc} | {prio}"):
                             c1, c2, _ = st.columns([1, 1, 3])
 
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
