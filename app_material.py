@@ -205,7 +205,7 @@ def admin_portal():
 
                 # --- LANGKAH 2 (Review) ---
                 st.divider()
-                st.subheader("🎯 Langkah 2: Review & Assign Vendor")
+                st.subheader("🎯 Review & Assign Vendor")
                 
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
                 
@@ -225,7 +225,8 @@ def admin_portal():
                                 if k.startswith("chk_"): del st.session_state[k]
                             st.rerun()
                     
-
+                    st.divider()
+                    st.subheader("✅ Pilih Vendor")
                     df_u = get_data("Users")
                     vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
                     sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
