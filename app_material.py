@@ -110,19 +110,29 @@ def admin_portal():
         uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
 
         if uploaded_file:
-            # Baca Excel, header ada di baris ke-3 (index 2)
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
 
-            # --- KUNCI UTAMA: Ambil ID dari kolom 'NO' ---
-            # Pastikan kolom 'NO' ada, kalau tidak ada kita pakai index sebagai cadangan
-            if 'NO' in df_raw.columns:
-                df_raw['ID_SISTEM'] = df_raw['NO'].astype(str)
-            else:
-                df_raw['ID_SISTEM'] = df_raw.index.astype(str)
+            # --- KUNCI ABADI (FIXED): Gabungan PR CODE + DESCRIPTION 2 ---
+            def create_immutable_id(row):
+                pr = str(row.get('PR CODE', '')).strip()
+                # Prioritaskan Desc 2 karena lebih spesifik (ukuran/spec)
+                desc2 = str(row.get('DESCRIPTION 2', '')).strip()
+                # Jika Desc 2 kosong, pakai Description biasa sebagai backup
+                if not desc2 or desc2.lower() == 'nan':
+                    desc2 = str(row.get('DESCRIPTION', '')).strip()
+                return f"{pr}_{desc2}"
+
+            df_raw['ID_SISTEM'] = df_raw.apply(create_immutable_id, axis=1)
 
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
+            
+            # Filter Open & Qty (tetap sama)
+            df_display = df_raw.copy()
+            if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
+                df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
+                df_display = df_raw[(df_raw['STATUS'].astype(str).str.strip() == 'Open') & (df_raw['QUANTITY'] > 0)].copy()
 
             df_display = df_raw.copy()
             if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
