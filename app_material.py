@@ -239,6 +239,8 @@ def admin_portal():
                                 id_sistem = item_row['ID_SISTEM']
                                 row_key = id_sistem
                                 match_key = create_match_key(pr_no, item_row.get('DESCRIPTION', ''), item_row.get('DESCRIPTION 2', ''))
+
+                                widget_key = f"chk_{id_sistem}"
                                 
                                 is_published = match_key in already_published_keys
                                 bg_color = "#d1fae5" if is_published else "transparent" # Warna hijau muda jika sudah dipublish
