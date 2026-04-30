@@ -310,8 +310,6 @@ def admin_portal():
                                     pr_no = str(item['PR CODE'])
                                     i_name = str(item['DESCRIPTION'])
                                     i_spec = str(item.get('DESCRIPTION 2',''))
-                                    qty = float(item['QUANTITY'])
-                                    uom = str(item['UOM'])
                                     loc = str(item.get('LOCATION',''))
                                     
                                     # ID Unique untuk Master (Kunci Utama)
@@ -320,21 +318,19 @@ def admin_portal():
                                     # Tambahkan ke list Master_Items (Database Induk)
                                     # Format: id_unique, pr_number, location, item_name, specification, qty, uom, category
                                     master_data.append([
-                                        id_unique, pr_no, loc, i_name, i_spec, qty, uom
+                                        id_unique, pr_no, loc, i_name, i_spec
                                     ])
 
                                     # Tambahkan ke list Access_Goods untuk setiap vendor yang dipilih
                                     for v_email in sel_v:
                                         access_data.append([
-                                            pr_no, loc, i_name, i_spec, qty, uom, v_email, "Open", ts
+                                            id_unique, pr_no, loc, i_name, i_spec, qty, uom, v_email, "Open", ts
                                         ])
                                 
                                 # 2. EKSEKUSI SIMPAN BATCH
                                 # Simpan ke Access_Goods
                                 success_access = batch_save_data("Access_Goods", access_data)
                                 
-                                # Simpan ke Master_Items (Hanya yang belum ada agar tidak duplikat di Master)
-                                # (Optional: Bisa ditambahkan cek duplikat di sini, tapi batch_save akan langsung append)
                                 success_master = batch_save_data("Master_Items", master_data)
                                 
                                 if success_access and success_master:
