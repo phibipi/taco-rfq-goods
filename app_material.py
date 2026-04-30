@@ -299,14 +299,40 @@ def admin_portal():
                         if not sel_v:
                             st.error("Silakan pilih minimal satu vendor.")
                         else:
-                            # Logika simpan GSheet bisa ditaruh di sini
-                            st.success("✅ Berhasil! RFQ telah dipublish.")
-                            st.session_state['selected_items_dict'] = {}
-                            for k in list(st.session_state.keys()):
-                                if k.startswith("chk_"): del st.session_state[k]
-                            st.rerun()
-                else:
-                    st.warning("Belum ada item yang dipilih dari Langkah 1.")
+                            with st.spinner("Sedang mengirim data..."):
+                                data_to_save = []
+                                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                
+                                # Loop setiap vendor yang dipilih
+                                for v_email in sel_v:
+                                    # Loop setiap item yang dicentang
+                                    for _, item in final_items.iterrows():
+                                        row = [
+                                            str(item['PR CODE']),         # pr_number
+                                            str(item.get('LOCATION','')), # location
+                                            str(item['DESCRIPTION']),     # item_name
+                                            str(item.get('DESCRIPTION 2','')), # specification
+                                            float(item['QUANTITY']),      # qty
+                                            str(item['UOM']),             # uom
+                                            v_email,                      # vendor_email
+                                            "Open",                       # status
+                                            ts                            # timestamp
+                                        ]
+                                        data_to_save.append(row)
+                                
+                                # Simpan sekaligus (Batch)
+                                success = batch_save_data("Access_Goods", data_to_save)
+                                
+                                if success:
+                                    st.success(f"✅ Berhasil! RFQ telah dikirim ke {len(sel_v)} vendor.")
+                                    # Bersihkan session state agar checkbox ter-reset
+                                    st.session_state['selected_items_dict'] = {}
+                                    for k in list(st.session_state.keys()):
+                                        if k.startswith("chk_"):
+                                            del st.session_state[k]
+                                    st.rerun()
+                                else:
+                                    st.error("Gagal menyimpan data. Cek koneksi Google Sheets.")
 
     # --- TAB LAINNYA ---
     with tabs[1]:
