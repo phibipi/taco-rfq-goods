@@ -220,6 +220,7 @@ def admin_portal():
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
                                 for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = True
+                                    st.session_state[f"chk_{k}"] = True                                    
                                 st.rerun()
 
                             if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
@@ -235,7 +236,7 @@ def admin_portal():
                             h5.markdown("**UOM**")
 
                             for idx, item_row in df_group.iterrows():
-                                row_key = f"{pr_no}_{item_row['index']}"
+                                row_key = id_sistem
                                 match_key = create_match_key(pr_no, item_row.get('DESCRIPTION', ''), item_row.get('DESCRIPTION 2', ''))
                                 
                                 is_published = match_key in already_published_keys
