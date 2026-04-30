@@ -49,6 +49,14 @@ def batch_save_data(sheet_name, data_list):
         ws.append_rows(data_list)
         return True
     return False
+    
+# --- HELPER ---
+def create_match_key(pr, desc, desc2):
+    pr = str(row.get('PR CODE', '')).strip()
+    desc1 = str(row.get('DESCRIPTION', '')).strip()
+    desc2 = str(row.get('DESCRIPTION 2', '')).strip()
+    d2 = "" if not desc2 or str(desc2).lower() == 'nan' else str(desc2).strip()
+    return f"{str(pr).strip()}_{str(desc).strip()}_{d2}".lower()
 
 # --- MAIN APP LOGIC ---
 def main():
@@ -152,13 +160,15 @@ def sync_checkbox(id_sistem, widget_key):
 
 def admin_portal():
     tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History"])
-    def create_immutable_id(row):
-        pr = str(row.get('PR CODE', '')).strip()
-        desc2 = str(row.get('DESCRIPTION 2', '')).strip()
-        # Jika Desc 2 kosong, fallback ke Desc 1 agar tetap unik
-        if not desc2 or desc2.lower() == 'nan':
-            desc2 = str(row.get('DESCRIPTION', '')).strip()
-        return f"{pr}_{desc2}"
+    df_access = get_data("Access_Goods")
+    already_published_keys = set()
+    if not df_access.empty:
+        # Kita asumsikan ada kolom pr_number, item_name, specification di sheet Access_Goods
+        for _, row in df_access.iterrows():
+            key = create_match_key(row.get('pr_number', ''), row.get('item_name', ''), row.get('specification', ''))
+            already_published_keys.add(key)
+            
+
     with tabs[0]:
         st.header("Upload Purchase Request Taconnect")
         uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
@@ -166,7 +176,6 @@ def admin_portal():
             # Baca Excel, header ada di baris ke-3 (index 2)
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
-            df_raw['ID_SISTEM'] = df_raw.apply(create_immutable_id, axis=1)
 
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
@@ -224,28 +233,35 @@ def admin_portal():
                             h4.markdown("**Qty**")
                             h5.markdown("**UOM**")
 
-                            for idx, item_row in df_group.iterrows():
-                                id_sistem = item_row['ID_SISTEM']
-                                # Widget key pakai id_sistem (kolom NO) agar abadi
-                                widget_key = f"chk_{id_sistem}"
+                           for idx, item_row in df_group.iterrows():
+                                # Buat Key untuk identifikasi baris di UI
+                                row_key = f"{pr_no}_{item_row['index']}"
+                                match_key = create_match_key(pr_no, item_row.get('DESCRIPTION', ''), item_row.get('DESCRIPTION 2', ''))
                                 
-                                if widget_key not in st.session_state:
-                                    st.session_state[widget_key] = st.session_state['selected_items_dict'].get(id_sistem, False)
-
-                                col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
-
-                                col1.checkbox(
-                                    label="select",
-                                    key=widget_key,
-                                    value=st.session_state['selected_items_dict'].get(id_sistem, False),
-                                    on_change=sync_checkbox,
-                                    args=(id_sistem, widget_key),
-                                    label_visibility="collapsed"
-                                )
-                                col2.write(item_row.get('DESCRIPTION', ''))
-                                col3.write(item_row.get('DESCRIPTION 2', ''))
-                                col4.write(item_row.get('QUANTITY', ''))
-                                col5.write(item_row.get('UOM', ''))
+                                is_published = match_key in already_published_keys
+                                bg_color = "#d1fae5" if is_published else "transparent" # Warna hijau muda jika sudah dipublish
+                                
+                                # Render Baris dengan Style
+                                container = st.container()
+                                with container:
+                                    # Gunakan HTML/CSS minimal untuk warna background per baris
+                                    st.markdown(
+                                        f"""<div style="background-color:{bg_color}; padding:5px; border-radius:5px; margin-bottom:2px;">""", 
+                                        unsafe_allow_html=True
+                                    )
+                                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 3, 3, 1, 1, 1.5])
+                                    
+                                    widget_key = f"chk_{row_key}"
+                                    c1.checkbox("select", key=widget_key, 
+                                                value=st.session_state['selected_items_dict'].get(row_key, False),
+                                                on_change=sync_checkbox, args=(row_key, widget_key),
+                                                label_visibility="collapsed")
+                                    
+                                    c2.write(item_row.get('DESCRIPTION', ''))
+                                    c3.write(item_row.get('DESCRIPTION 2', ''))
+                                    c4.write(item_row.get('QUANTITY', ''))
+                                    c5.write(item_row.get('UOM', ''))
+                                    
 
                 # --- LANGKAH 2 (Review) ---
                 st.divider()
