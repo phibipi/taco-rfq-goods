@@ -320,7 +320,7 @@ def admin_portal():
                                     # Tambahkan ke list Master_Items (Database Induk)
                                     # Format: id_unique, pr_number, location, item_name, specification, qty, uom, category
                                     master_data.append([
-                                        id_unique, pr_no, loc, i_name, i_spec, qty, uom, "Sparepart"
+                                        id_unique, pr_no, loc, i_name, i_spec, qty, uom
                                     ])
 
                                     # Tambahkan ke list Access_Goods untuk setiap vendor yang dipilih
