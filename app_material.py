@@ -8,7 +8,7 @@ import io
 import uuid
 
 # --- CONFIG ---
-st.set_page_config(page_title="TACO Goods Procurement", layout="wide", page_icon="📦")
+st.set_page_config(page_title="TACO Procurement", layout="wide", page_icon="🏢")
 SPREADSHEET_ID_GOODS = "1nuU8s1ahNfQsCV-zdIh5QiiLuMc8MgJQWxl1Op3eMD0"
 
 # --- DATABASE CONNECTION ---
@@ -52,18 +52,66 @@ def batch_save_data(sheet_name, data_list):
 
 # --- MAIN APP LOGIC ---
 def main():
-    if 'user_info' not in st.session_state:
-        st.session_state['user_info'] = None
-    if 'selected_items_dict' not in st.session_state:
-        st.session_state['selected_items_dict'] = {}
-        
-    if st.session_state['user_info'] is None:
+    # State Inisialisasi
+    if 'user_info' not in st.session_state: st.session_state['user_info'] = None
+    if 'app_mode' not in st.session_state: st.session_state['app_mode'] = "Landing"
+    if 'selected_items_dict' not in st.session_state: st.session_state['selected_items_dict'] = {}
+    if 'df_raw_draft' not in st.session_state: st.session_state['df_raw_draft'] = None
+
+    # 1. Halaman Induk (Sebelum Login)
+    if st.session_state['app_mode'] == "Landing":
+        show_landing_page()
+    
+    # 2. Halaman Login (Setelah pilih Rawmat)
+    elif st.session_state['user_info'] is None:
         show_login()
+    
+    # 3. Halaman Dashboard (Setelah Login)
     else:
         show_dashboard()
 
+def show_landing_page():
+    # --- HEADER DENGAN LOGO ---
+    col_logo, col_title = st.columns([1, 8])
+    with col_logo:
+        # Pastikan file image_logo.png ada di folder yang sama dengan app.py
+        if os.path.exists("image_logo.png"):
+            st.image("image_logo.png", width=80)
+        else:
+            st.write("🏢") # Fallback jika file gambar tidak ditemukan
+    with col_title:
+        st.title("🏢 TACO Procurement RFQ")
+    st.subheader("Pilih Portal:")
+    st.write("---")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        with st.container(border=True):
+            st.markdown("### 🛠️ Sparepart")
+            st.write("Pengadaan sparepart mesin dan maintenance.")
+            if st.button("Masuk", use_container_width=True, type="primary"):
+                st.session_state['app_mode'] = "mat_Login"
+                st.rerun()
+                
+    with c2:
+        with st.container(border=True):
+            st.markdown("### 🚛 Transport")
+            st.write("Pengadaan transport dan logistik.")
+            # Link ke Apps Transport
+            st.link_button("Masuk", "https://taco-transport.streamlit.app", use_container_width=True)
+
 def show_login():
-    st.title("🏢 TACO E-Procurement (Goods)")
+      
+    # --- HEADER LOGIN DENGAN LOGO ---
+    col_logo, col_title = st.columns([1, 8])
+    with col_logo:
+        if os.path.exists("image_logo.png"):
+            st.image("image_logo.png", width=60)
+        else:
+            st.write("🔐")
+    with col_title:
+        st.title("🛠️ TACO Sparepart RFQ")
+
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         with st.container(border=True):
@@ -71,29 +119,29 @@ def show_login():
             password_input = st.text_input("Password", type="password").strip()
             if st.button("Masuk", type="primary", use_container_width=True):
                 df_users = get_data("Users")
-                if not df_users.empty:
-                    user = df_users[
-                        (df_users['email'].astype(str).str.lower() == email_input) &
-                        (df_users['password'].astype(str) == password_input)
-                    ]
-                    if not user.empty:
-                        st.session_state['user_info'] = user.iloc[0].to_dict()
-                        st.rerun()
-                    else:
-                        st.error("Email atau Password salah.")
+                user = df_users[(df_users['email'].astype(str).str.lower() == email_input) & 
+                                (df_users['password'].astype(str) == password_input)]
+                if not user.empty:
+                    st.session_state['user_info'] = user.iloc[0].to_dict()
+                    st.rerun()
                 else:
-                    st.error("Data User tidak ditemukan atau koneksi bermasalah.")
+                    st.error("Email atau Password salah.")
 
 def show_dashboard():
     user = st.session_state['user_info']
-    role = user['role']
-    st.sidebar.title(f"👋 {user.get('vendor_name', 'User')}")
-    st.sidebar.info(f"Modul: **Rawmat & Sparepart**")
-    if st.sidebar.button("Log Out"):
-        st.session_state['user_info'] = None
-        st.session_state['selected_items_dict'] = {}
-        st.rerun()
-    if role == 'admin':
+    
+    # --- TOP BAR (MENGGANTIKAN SIDEBAR) ---
+    col_u, col_sp, col_lo = st.columns([3, 5, 1])
+    with col_u:
+        st.markdown(f"👋 **{user.get('vendor_name', 'User')}**")
+    with col_lo:
+        if st.button("Log Out", type="secondary", use_container_width=True):
+            st.session_state['user_info'] = None
+            st.session_state['selected_items_dict'] = {}
+            st.rerun()
+    st.divider()
+
+    if user['role'] == 'admin':
         admin_portal()
     else:
         vendor_portal(user['email'])
@@ -103,15 +151,26 @@ def sync_checkbox(id_sistem, widget_key):
     st.session_state['selected_items_dict'][id_sistem] = st.session_state[widget_key]
 
 def admin_portal():
-    tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History Search"])
+    tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History"])
 
     with tabs[0]:
-        st.header("Upload Purchase Request Taconnect")
-        uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
+        # --- FITUR 3: RESUME UPLOAD ---
+        if st.session_state['df_raw_draft'] is not None:
+            with st.warning("⚠️ Kamu memiliki draft upload sebelumnya."):
+                col_a, col_b = st.columns(2)
+                if col_b.button("🗑️ Hapus & Ulang", use_container_width=True):
+                    st.session_state['df_raw_draft'] = None
+                    st.session_state['selected_items_dict'] = {}
+                    st.rerun()
+                if col_a.button("✅ Lanjutkan Draft", use_container_width=True):
+                    pass # Biarkan lanjut ke bawah
 
-        if uploaded_file:
-            df_raw = pd.read_excel(uploaded_file, header=2)
-            df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
+        # Logic Upload
+        if st.session_state.get('df_raw_draft') is None:
+            uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
+            if uploaded_file:
+                df_raw = pd.read_excel(uploaded_file, header=2)
+                df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
 
             # --- KUNCI ABADI (FIXED): Gabungan PR CODE + DESCRIPTION 2 ---
             def create_immutable_id(row):
@@ -124,16 +183,17 @@ def admin_portal():
                 return f"{pr}_{desc2}"
 
             df_raw['ID_SISTEM'] = df_raw.apply(create_immutable_id, axis=1)
+            # --- FITUR 4: CEK HISTORY RFQ (HIGHLIGHT) ---
+            df_history = get_data("Master_Items")
+            # Kita tandai mana yang sudah pernah di-publish (berdasarkan No PR dan No Baris)
+            sent_ids = []
+            if not df_history.empty:
+                # Sesuaikan nama kolom di sheet Master_Items (misal 'pr_number' dan 'item_name' atau tambahkan kolom 'no_item')
+                sent_ids = df_history['pr_number'].astype(str) + "_" + df_history['item_name'].astype(str)
 
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
             
-            # Filter Open & Qty (tetap sama)
-            df_display = df_raw.copy()
-            if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
-                df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
-                df_display = df_raw[(df_raw['STATUS'].astype(str).str.strip() == 'Open') & (df_raw['QUANTITY'] > 0)].copy()
-
             df_display = df_raw.copy()
             if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
                 df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
