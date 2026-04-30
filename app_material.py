@@ -233,7 +233,7 @@ def admin_portal():
                             h4.markdown("**Qty**")
                             h5.markdown("**UOM**")
 
-                           for idx, item_row in df_group.iterrows():
+                            for idx, item_row in df_group.iterrows():
                                 row_key = f"{pr_no}_{item_row['index']}"
                                 match_key = create_match_key(pr_no, item_row.get('DESCRIPTION', ''), item_row.get('DESCRIPTION 2', ''))
                                 
