@@ -226,6 +226,7 @@ def admin_portal():
                             if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
                                 for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = False
+                                    st.session_state[f"chk_{k}"] = False  
                                 st.rerun()
 
                             h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
@@ -253,7 +254,7 @@ def admin_portal():
                                         f"""<div style="background-color:{bg_color}; padding:5px; border-radius:5px; margin-bottom:2px;">""", 
                                         unsafe_allow_html=True
                                     )
-                                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 3, 3, 1, 1, 1.5])
+                                    c1, c2, c3, c4, c5= st.columns([0.5, 3, 3, 1, 1])
                                     
                                     widget_key = f"chk_{row_key}"
                                     c1.checkbox("select", key=widget_key, 
