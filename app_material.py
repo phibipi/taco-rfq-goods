@@ -299,40 +299,55 @@ def admin_portal():
                         if not sel_v:
                             st.error("Silakan pilih minimal satu vendor.")
                         else:
-                            with st.spinner("Sedang mengirim data..."):
-                                data_to_save = []
+                            with st.spinner("Sedang memproses database..."):
+                                # 1. SIAPKAN DATA UNTUK Access_Goods (Hak akses vendor)
+                                access_data = []
+                                master_data = []
                                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                 
-                                # Loop setiap vendor yang dipilih
-                                for v_email in sel_v:
-                                    # Loop setiap item yang dicentang
-                                    for _, item in final_items.iterrows():
-                                        row = [
-                                            str(item['PR CODE']),         # pr_number
-                                            str(item.get('LOCATION','')), # location
-                                            str(item['DESCRIPTION']),     # item_name
-                                            str(item.get('DESCRIPTION 2','')), # specification
-                                            float(item['QUANTITY']),      # qty
-                                            str(item['UOM']),             # uom
-                                            v_email,                      # vendor_email
-                                            "Open",                       # status
-                                            ts                            # timestamp
-                                        ]
-                                        data_to_save.append(row)
+                                # Loop setiap item yang dicentang
+                                for _, item in final_items.iterrows():
+                                    pr_no = str(item['PR CODE'])
+                                    i_name = str(item['DESCRIPTION'])
+                                    i_spec = str(item.get('DESCRIPTION 2',''))
+                                    qty = float(item['QUANTITY'])
+                                    uom = str(item['UOM'])
+                                    loc = str(item.get('LOCATION',''))
+                                    
+                                    # ID Unique untuk Master (Kunci Utama)
+                                    id_unique = create_match_key(pr_no, i_name, i_spec)
+
+                                    # Tambahkan ke list Master_Items (Database Induk)
+                                    # Format: id_unique, pr_number, location, item_name, specification, qty, uom, category
+                                    master_data.append([
+                                        id_unique, pr_no, loc, i_name, i_spec, qty, uom, "Sparepart"
+                                    ])
+
+                                    # Tambahkan ke list Access_Goods untuk setiap vendor yang dipilih
+                                    for v_email in sel_v:
+                                        access_data.append([
+                                            pr_no, loc, i_name, i_spec, qty, uom, v_email, "Open", ts
+                                        ])
                                 
-                                # Simpan sekaligus (Batch)
-                                success = batch_save_data("Access_Goods", data_to_save)
+                                # 2. EKSEKUSI SIMPAN BATCH
+                                # Simpan ke Access_Goods
+                                success_access = batch_save_data("Access_Goods", access_data)
                                 
-                                if success:
-                                    st.success(f"✅ Berhasil! RFQ telah dikirim ke {len(sel_v)} vendor.")
-                                    # Bersihkan session state agar checkbox ter-reset
+                                # Simpan ke Master_Items (Hanya yang belum ada agar tidak duplikat di Master)
+                                # (Optional: Bisa ditambahkan cek duplikat di sini, tapi batch_save akan langsung append)
+                                success_master = batch_save_data("Master_Items", master_data)
+                                
+                                if success_access and success_master:
+                                    st.success(f"✅ Berhasil! Data tersimpan di Master & RFQ dikirim ke {len(sel_v)} vendor.")
+                                    
+                                    # Reset UI
                                     st.session_state['selected_items_dict'] = {}
                                     for k in list(st.session_state.keys()):
                                         if k.startswith("chk_"):
                                             del st.session_state[k]
                                     st.rerun()
                                 else:
-                                    st.error("Gagal menyimpan data. Cek koneksi Google Sheets.")
+                                    st.error("Gagal menyimpan data ke salah satu sheet. Periksa koneksi.")
 
     # --- TAB LAINNYA ---
     with tabs[1]:
