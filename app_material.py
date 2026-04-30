@@ -198,8 +198,13 @@ def admin_portal():
                         loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
                         prio_raw = str(df_group['PRIORITY STATUS'].iloc[0]) if 'PRIORITY STATUS' in df_group.columns else "-"
                         prio = prio_raw[:6]
+
+                        if "URGENT" in prio:
+                            header_label = f"📄 PR: {pr_no} | 📍 {loc} | 🚨 [URGENT] "
+                        else:
+                            header_label = f"📄 PR: {pr_no} | 📍 {loc}"
                         
-                        with st.expander(f"📄 PR: {pr_no} | 📍 {loc}| ⚡ {prio}"):
+                        with st.expander(header_label):
                             c1, c2, _ = st.columns([1, 1, 3])
 
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
