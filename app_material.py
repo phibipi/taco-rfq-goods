@@ -155,8 +155,8 @@ def show_dashboard():
         vendor_portal(user['email'])
 
 # --- CALLBACK TETAP SAMA TAPI PAKAI ID DARI KOLOM NO ---
-def sync_checkbox(create_match_key, widget_key):
-    st.session_state['selected_items_dict'][create_match_key] = st.session_state[widget_key]
+def sync_checkbox(id_sistem, widget_key):
+    st.session_state['selected_items_dict'][id_sistem] = st.session_state[widget_key]
 
 def admin_portal():
     tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History"])
@@ -167,7 +167,7 @@ def admin_portal():
         for _, row in df_access.iterrows():
             key = create_match_key(row.get('pr_number', ''), row.get('item_name', ''), row.get('specification', ''))
             already_published_keys.add(key)
-            
+    
 
     with tabs[0]:
         st.header("Upload Purchase Request Taconnect")
@@ -176,6 +176,7 @@ def admin_portal():
             # Baca Excel, header ada di baris ke-3 (index 2)
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
+            df_raw['ID_SISTEM'] = df_raw.apply(create_match_key, axis=1)    
 
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
@@ -217,12 +218,12 @@ def admin_portal():
                             c1, c2, _ = st.columns([1, 1, 3])
 
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
-                                for k in df_group['create_match_key']:
+                                for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = True
                                 st.rerun()
 
                             if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
-                                for k in df_group['create_match_key']:
+                                for k in df_group['ID_SISTEM']:
                                     st.session_state['selected_items_dict'][k] = False
                                 st.rerun()
 
@@ -268,8 +269,8 @@ def admin_portal():
                 
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
                 
-                # Filter final_items pakai create_match_key (Kolom NO)
-                final_items = df_display[df_display['create_match_key'].isin(selected_keys)].copy()
+                # Filter final_items pakai ID_SISTEM (Kolom NO)
+                final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
 
                 if not final_items.empty:
                     with st.expander(f"📋 Item Terpilih ({len(final_items)} item)", expanded=True):
