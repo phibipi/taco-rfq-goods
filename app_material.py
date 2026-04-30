@@ -133,7 +133,7 @@ def show_dashboard():
     # --- TOP BAR (MENGGANTIKAN SIDEBAR) ---
     col_u, col_sp, col_lo = st.columns([3, 5, 1])
     with col_u:
-        st.markdown(f"👋 Welcome, **{user.get('vendor_name', 'User')}**")
+        st.title(f"👋 Welcome, **{user.get('vendor_name', 'User')}**")
     with col_lo:
         if st.button("Log Out", type="secondary", use_container_width=True):
             st.session_state['user_info'] = None
@@ -152,141 +152,135 @@ def sync_checkbox(id_sistem, widget_key):
 
 def admin_portal():
     tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History"])
-
-    # 1. Definisikan fungsi ID di level teratas agar selalu terbaca
     def create_immutable_id(row):
         pr = str(row.get('PR CODE', '')).strip()
         desc2 = str(row.get('DESCRIPTION 2', '')).strip()
+        # Jika Desc 2 kosong, fallback ke Desc 1 agar tetap unik
         if not desc2 or desc2.lower() == 'nan':
             desc2 = str(row.get('DESCRIPTION', '')).strip()
         return f"{pr}_{desc2}"
-
     with tabs[0]:
-        # --- FITUR RESUME UPLOAD ---
-        if st.session_state.get('df_raw_draft') is not None:
-            with st.warning("ℹ️ Draft terdeteksi."):
-                col_a, col_b = st.columns(2)
-                if col_b.button("🗑️ Hapus & Ulang", use_container_width=True):
-                    st.session_state['df_raw_draft'] = None
-                    st.session_state['selected_items_dict'] = {}
-                    st.rerun()
-                if col_a.button("✅ Lanjutkan Draft", use_container_width=True):
-                    pass # Biarkan lanjut ke render bawah
+        st.header("Upload Purchase Request Taconnect")
+        uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
+        if uploaded_file:
+            # Baca Excel, header ada di baris ke-3 (index 2)
+            df_raw = pd.read_excel(uploaded_file, header=2)
+            df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
+            df_raw['ID_SISTEM'] = df_raw.apply(create_immutable_id, axis=1)
 
-        # --- LOGIKA UPLOAD BARU ---
-        if st.session_state.get('df_raw_draft') is None:
-            uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
-            if uploaded_file:
-                df_raw = pd.read_excel(uploaded_file, header=2)
-                df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
+            if 'selected_items_dict' not in st.session_state:
+                st.session_state['selected_items_dict'] = {}
+
+            df_display = df_raw.copy()
+            if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
+                df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
+                df_display = df_raw[
+                    (df_raw['STATUS'].astype(str).str.strip() == 'Open') &
+                    (df_raw['QUANTITY'] > 0)
+                ].copy()
+
+            if not df_display.empty:
+                st.subheader("📝Pilih Item / PR")
+                search_query = st.text_input("🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini...")
+
+                df_to_show = df_display.copy()
+                if search_query:
+                    q = search_query.lower()
+                    mask = (
+                        df_to_show['PR CODE'].astype(str).str.lower().str.contains(q, regex=False, na=False) |
+                        df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False)
+                    )
+                    df_to_show = df_to_show[mask]
+
+                with st.container(height=550, border=True):
+                    for pr_no in df_to_show['PR CODE'].unique():
+                        df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy().reset_index(drop=True)
+                        loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
+                        prio_raw = str(df_group['PRIORITY STATUS'].iloc[0]) if 'PRIORITY STATUS' in df_group.columns else "-"
+                        prio = prio_raw[:6]
+                        
+                        with st.expander(f"📄 PR: {pr_no} | 📍 {loc}| ⚡ {prio}"):
+                            c1, c2, _ = st.columns([1, 1, 3])
+
+                            if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
+                                for k in df_group['ID_SISTEM']:
+                                    st.session_state['selected_items_dict'][k] = True
+                                st.rerun()
+
+                            if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
+                                for k in df_group['ID_SISTEM']:
+                                    st.session_state['selected_items_dict'][k] = False
+                                st.rerun()
+
+                            h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
+                            h1.markdown("**✓**")
+                            h2.markdown("**Description**")
+                            h3.markdown("**Description 2**")
+                            h4.markdown("**Qty**")
+                            h5.markdown("**UOM**")
+
+                            for idx, item_row in df_group.iterrows():
+                                id_sistem = item_row['ID_SISTEM']
+                                # Widget key pakai id_sistem (kolom NO) agar abadi
+                                widget_key = f"chk_{id_sistem}"
+                                
+                                if widget_key not in st.session_state:
+                                    st.session_state[widget_key] = st.session_state['selected_items_dict'].get(id_sistem, False)
+
+                                col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
+
+                                col1.checkbox(
+                                    label="select",
+                                    key=widget_key,
+                                    value=st.session_state['selected_items_dict'].get(id_sistem, False),
+                                    on_change=sync_checkbox,
+                                    args=(id_sistem, widget_key),
+                                    label_visibility="collapsed"
+                                )
+                                col2.write(item_row.get('DESCRIPTION', ''))
+                                col3.write(item_row.get('DESCRIPTION 2', ''))
+                                col4.write(item_row.get('QUANTITY', ''))
+                                col5.write(item_row.get('UOM', ''))
+
+                # --- LANGKAH 2 (Review) ---
+                st.divider()
+                st.subheader("🎯 Review & Assign Vendor")
                 
-                # Buat ID Abadi
-                df_raw['ID_SISTEM'] = df_raw.apply(create_immutable_id, axis=1)
+                selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
                 
-                # Filter Dasar (Status Open & Qty > 0)
-                if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
-                    df_raw['QUANTITY'] = pd.to_numeric(df_raw['QUANTITY'], errors='coerce').fillna(0)
-                    df_raw = df_raw[(df_raw['STATUS'].astype(str).str.strip() == 'Open') & (df_raw['QUANTITY'] > 0)].copy()
-                
-                # SIMPAN KE DRAFT
-                st.session_state['df_raw_draft'] = df_raw
-                st.rerun()
-            return # Berhenti di sini jika belum ada file
+                # Filter final_items pakai ID_SISTEM (Kolom NO)
+                final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
 
-        # --- JIKA DRAFT ADA, LANJUT RENDER ---
-        df_display = st.session_state['df_raw_draft']
+                if not final_items.empty:
+                    with st.expander(f"📋 Item Terpilih ({len(final_items)} item)", expanded=True):
+                        st.dataframe(
+                            final_items[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']],
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        if st.button("🚨 Reset Semua Pilihan"):
+                            st.session_state['selected_items_dict'] = {}
+                            for k in list(st.session_state.keys()):
+                                if k.startswith("chk_"): del st.session_state[k]
+                            st.rerun()
+                    
 
-        # --- CEK HISTORY RFQ (HIGHLIGHT) ---
-        df_history = get_data("Master_Items")
-        history_keys = set() # Gunakan SET agar pencarian lebih cepat (O(1))
-        if not df_history.empty:
-            history_keys = set((df_history['pr_number'].astype(str) + "_" + df_history['item_name'].astype(str)).tolist())
+                    df_u = get_data("Users")
+                    vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
+                    sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
 
-        st.subheader("📝 Langkah 1: Pilih Item")
-        search_query = st.text_input("🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini...")
-
-        df_to_show = df_display.copy()
-        if search_query:
-            q = search_query.lower()
-            mask = (
-                df_to_show['PR CODE'].astype(str).str.lower().str.contains(q, na=False) |
-                df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, na=False)
-            )
-            df_to_show = df_to_show[mask]
-
-        with st.container(height=550, border=True):
-            for pr_no in df_to_show['PR CODE'].unique():
-                df_group = df_to_show[df_to_show['PR CODE'] == pr_no].copy().reset_index(drop=True)
-                loc = df_group['LOCATION'].iloc[0] if 'LOCATION' in df_group.columns else "-"
-                prio = df_group['PRIORITY STATUS'].iloc[0] if 'PRIORITY STATUS' in df_group.columns else "-"
-
-                with st.expander(f"📄 PR: {pr_no} | 📍 {loc} | {prio}"):
-                    c1, c2, _ = st.columns([1, 1, 3])
-                    if c1.button("✅ Pilih Semua", key=f"all_{pr_no}"):
-                        for k in df_group['ID_SISTEM']: st.session_state['selected_items_dict'][k] = True
-                        st.rerun()
-                    if c2.button("🗑️ Kosongkan", key=f"none_{pr_no}"):
-                        for k in df_group['ID_SISTEM']: st.session_state['selected_items_dict'][k] = False
-                        st.rerun()
-
-                    # Header Kolom
-                    h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
-                    h1.markdown("**✓**")
-                    h2.markdown("**Description**")
-                    h3.markdown("**Description 2**")
-                    h4.markdown("**Qty**")
-                    h5.markdown("**UOM**")
-
-                    for idx, row in df_group.iterrows():
-                        id_s = row['ID_SISTEM']
-                        # Widget key unik berbasis hash ID agar aman dari karakter spesial
-                        w_key = f"chk_{hash(id_s)}"
-                        
-                        # Highlight logic
-                        is_sent = (str(row['PR CODE']) + "_" + str(row['DESCRIPTION'])) in history_keys
-                        bg_color = "#d1fae5" if is_sent else "transparent"
-                        
-                        st.markdown(f'<div style="background-color:{bg_color}; padding:5px; border-radius:5px; margin-bottom:2px; border:1px solid #eee;">', unsafe_allow_html=True)
-                        col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
-                        
-                        col1.checkbox("ok", key=w_key, 
-                                    value=st.session_state['selected_items_dict'].get(id_s, False),
-                                    on_change=sync_checkbox, args=(id_s, w_key), label_visibility="collapsed")
-                        
-                        sent_label = " ✅ (SENT)" if is_sent else ""
-                        col2.write(f"**{row['DESCRIPTION']}**{sent_label}")
-                        col3.write(row.get('DESCRIPTION 2', '-'))
-                        col4.write(row.get('QUANTITY', '0'))
-                        col5.write(row.get('UOM', '-'))
-                        st.markdown('</div>', unsafe_allow_html=True)
-
-        # --- LANGKAH 2 (Review) ---
-        st.divider()
-        st.subheader("🎯 Review & Assign Vendor")
-        selected_ids = [k for k, v in st.session_state['selected_items_dict'].items() if v]
-        df_final = df_display[df_display['ID_SISTEM'].isin(selected_ids)].copy()
-
-        if not df_final.empty:
-            with st.expander(f"📋 Item Terpilih ({len(df_final)} item)", expanded=True):
-                st.dataframe(df_final[['PR CODE', 'DESCRIPTION', 'DESCRIPTION 2', 'QUANTITY', 'UOM']], hide_index=True, use_container_width=True)
-                if st.button("🚨 Reset Semua Pilihan"):
-                    st.session_state['selected_items_dict'] = {}
-                    st.rerun()
-
-            df_u = get_data("Users")
-            vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
-            sel_v = st.multiselect("Pilih Vendor Penerima RFQ:", vendors)
-
-            if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
-                if not sel_v:
-                    st.error("Silakan pilih minimal satu vendor.")
+                    if st.button("🚀 Publish Undangan RFQ", type="primary", use_container_width=True):
+                        if not sel_v:
+                            st.error("Silakan pilih minimal satu vendor.")
+                        else:
+                            # Logika simpan GSheet bisa ditaruh di sini
+                            st.success("✅ Berhasil! RFQ telah dipublish.")
+                            st.session_state['selected_items_dict'] = {}
+                            for k in list(st.session_state.keys()):
+                                if k.startswith("chk_"): del st.session_state[k]
+                            st.rerun()
                 else:
-                    # Reset setelah sukses publish
-                    st.success("✅ Berhasil! RFQ telah dipublish.")
-                    st.session_state['selected_items_dict'] = {}
-                    st.rerun()
-        else:
-            st.warning("Belum ada item yang dipilih.")
+                    st.warning("Belum ada item yang dipilih dari Langkah 1.")
 
     # --- TAB LAINNYA ---
     with tabs[1]:
