@@ -236,6 +236,7 @@ def admin_portal():
                             h5.markdown("**UOM**")
 
                             for idx, item_row in df_group.iterrows():
+                                id_sistem = item_row['ID_SISTEM']
                                 row_key = id_sistem
                                 match_key = create_match_key(pr_no, item_row.get('DESCRIPTION', ''), item_row.get('DESCRIPTION 2', ''))
                                 
