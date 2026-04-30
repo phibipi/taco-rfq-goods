@@ -153,6 +153,13 @@ def sync_checkbox(id_sistem, widget_key):
 def admin_portal():
     tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History"])
 
+    def create_immutable_id(row):
+        pr = str(row.get('PR CODE', '')).strip()
+        desc2 = str(row.get('DESCRIPTION 2', '')).strip()
+        if not desc2 or desc2.lower() == 'nan':
+           desc2 = str(row.get('DESCRIPTION', '')).strip()
+        return f"{pr}_{desc2}"
+    
     with tabs[0]:
         # --- FITUR 3: RESUME UPLOAD ---
         if st.session_state['df_raw_draft'] is not None:
@@ -171,16 +178,6 @@ def admin_portal():
             if uploaded_file:
                 df_raw = pd.read_excel(uploaded_file, header=2)
                 df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
-
-            # --- KUNCI ABADI (FIXED): Gabungan PR CODE + DESCRIPTION 2 ---
-            def create_immutable_id(row):
-                pr = str(row.get('PR CODE', '')).strip()
-                # Prioritaskan Desc 2 karena lebih spesifik (ukuran/spec)
-                desc2 = str(row.get('DESCRIPTION 2', '')).strip()
-                # Jika Desc 2 kosong, pakai Description biasa sebagai backup
-                if not desc2 or desc2.lower() == 'nan':
-                    desc2 = str(row.get('DESCRIPTION', '')).strip()
-                return f"{pr}_{desc2}"
 
             df_raw['ID_SISTEM'] = df_raw.apply(create_immutable_id, axis=1)
             # --- FITUR 4: CEK HISTORY RFQ (HIGHLIGHT) ---
