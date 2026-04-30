@@ -49,49 +49,40 @@ def batch_save_data(sheet_name, data_list):
         ws.append_rows(data_list)
         return True
     return False
-    
+
 # --- HELPER ---
 def create_match_key(pr, desc, desc2):
-    pr = str(row.get('PR CODE', '')).strip()
-    desc1 = str(row.get('DESCRIPTION', '')).strip()
-    desc2 = str(row.get('DESCRIPTION 2', '')).strip()
+    p = str(pr).strip()
+    d1 = str(desc).strip()
     d2 = "" if not desc2 or str(desc2).lower() == 'nan' else str(desc2).strip()
-    return f"{str(pr).strip()}_{str(desc).strip()}_{d2}".lower()
+    return f"{p}_{d1}_{d2}".lower()
 
 # --- MAIN APP LOGIC ---
 def main():
-    # State Inisialisasi
     if 'user_info' not in st.session_state: st.session_state['user_info'] = None
     if 'app_mode' not in st.session_state: st.session_state['app_mode'] = "Landing"
     if 'selected_items_dict' not in st.session_state: st.session_state['selected_items_dict'] = {}
     if 'df_raw_draft' not in st.session_state: st.session_state['df_raw_draft'] = None
 
-    # 1. Halaman Induk (Sebelum Login)
     if st.session_state['app_mode'] == "Landing":
         show_landing_page()
-    
-    # 2. Halaman Login (Setelah pilih Rawmat)
     elif st.session_state['user_info'] is None:
         show_login()
-    
-    # 3. Halaman Dashboard (Setelah Login)
     else:
         show_dashboard()
 
 def show_landing_page():
-    # --- HEADER DENGAN LOGO ---
     col_logo, col_title = st.columns([1, 8])
     with col_logo:
-        # Pastikan file image_logo.png ada di folder yang sama dengan app.py
         if os.path.exists("image_logo.png"):
             st.image("image_logo.png", width=80)
         else:
-            st.write("🏢") # Fallback jika file gambar tidak ditemukan
+            st.write("🏢")
     with col_title:
         st.title("🏢 TACO Procurement RFQ")
     st.subheader("Pilih Portal:")
     st.write("---")
-    
+
     c1, c2 = st.columns(2)
     with c1:
         with st.container(border=True):
@@ -100,17 +91,13 @@ def show_landing_page():
             if st.button("Masuk", use_container_width=True, type="primary"):
                 st.session_state['app_mode'] = "mat_Login"
                 st.rerun()
-                
     with c2:
         with st.container(border=True):
             st.markdown("### 🚛 Transport")
             st.write("Pengadaan transport dan logistik.")
-            # Link ke Apps Transport
             st.link_button("Masuk", "https://taco-transport.streamlit.app", use_container_width=True)
 
 def show_login():
-      
-    # --- HEADER LOGIN DENGAN LOGO ---
     col_logo, col_title = st.columns([1, 8])
     with col_logo:
         if os.path.exists("image_logo.png"):
@@ -127,8 +114,10 @@ def show_login():
             password_input = st.text_input("Password", type="password").strip()
             if st.button("Masuk", type="primary", use_container_width=True):
                 df_users = get_data("Users")
-                user = df_users[(df_users['email'].astype(str).str.lower() == email_input) & 
-                                (df_users['password'].astype(str) == password_input)]
+                user = df_users[
+                    (df_users['email'].astype(str).str.lower() == email_input) &
+                    (df_users['password'].astype(str) == password_input)
+                ]
                 if not user.empty:
                     st.session_state['user_info'] = user.iloc[0].to_dict()
                     st.rerun()
@@ -137,8 +126,6 @@ def show_login():
 
 def show_dashboard():
     user = st.session_state['user_info']
-    
-    # --- TOP BAR (MENGGANTIKAN SIDEBAR) ---
     col_u, col_sp, col_lo = st.columns([3, 5, 1])
     with col_u:
         st.title(f"👋 Welcome, **{user.get('vendor_name', 'User')}**")
@@ -154,31 +141,28 @@ def show_dashboard():
     else:
         vendor_portal(user['email'])
 
-# --- CALLBACK TETAP SAMA TAPI PAKAI ID DARI KOLOM NO ---
-def sync_checkbox(id_sistem, widget_key):
-    st.session_state['selected_items_dict'][id_sistem] = st.session_state[widget_key]
-
 def admin_portal():
     tabs = st.tabs(["📥 Import PR List", "📊 Monitoring & Comparison", "🔍 History"])
+
+    # Ambil data yang sudah dipublish untuk penanda warna hijau
     df_access = get_data("Access_Goods")
     already_published_keys = set()
     if not df_access.empty:
-        # Kita asumsikan ada kolom pr_number, item_name, specification di sheet Access_Goods
         for _, row in df_access.iterrows():
-            key = create_match_key(row.get('pr_number', ''), row.get('item_name', ''), row.get('specification', ''))
+            key = create_match_key(
+                row.get('pr_number', ''),
+                row.get('item_name', ''),
+                row.get('specification', '')
+            )
             already_published_keys.add(key)
-            
 
     with tabs[0]:
         st.header("Upload Purchase Request Taconnect")
         uploaded_file = st.file_uploader("Upload File Excel", type=['xlsx'])
+
         if uploaded_file:
-            # Baca Excel, header ada di baris ke-3 (index 2)
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
-
-            if 'selected_items_dict' not in st.session_state:
-                st.session_state['selected_items_dict'] = {}
 
             df_display = df_raw.copy()
             if 'STATUS' in df_raw.columns and 'QUANTITY' in df_raw.columns:
@@ -188,9 +172,19 @@ def admin_portal():
                     (df_raw['QUANTITY'] > 0)
                 ].copy()
 
+            # ✅ FIX 1: Buat ID_SISTEM di df_display
+            df_display = df_display.reset_index(drop=True)
+            df_display['ID_SISTEM'] = (
+                df_display['PR CODE'].astype(str) + "_" +
+                df_display['DESCRIPTION'].astype(str) + "_" +
+                df_display.index.astype(str)  # pakai index agar benar-benar unik
+            )
+
             if not df_display.empty:
-                st.subheader("📝Pilih Item / PR")
-                search_query = st.text_input("🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini...")
+                st.subheader("📝 Pilih Item / PR")
+                search_query = st.text_input(
+                    "🔍 Cari No. PR atau Nama Item...", placeholder="Ketik di sini..."
+                )
 
                 df_to_show = df_display.copy()
                 if search_query:
@@ -209,21 +203,24 @@ def admin_portal():
                         prio = prio_raw[:6]
 
                         if "URGENT" in prio:
-                            header_label = f"📄 PR: {pr_no} | 📍 {loc} | 🚨 [URGENT] "
+                            header_label = f"📄 PR: {pr_no} | 📍 {loc} | 🚨 [URGENT]"
                         else:
                             header_label = f"📄 PR: {pr_no} | 📍 {loc}"
-                        
+
                         with st.expander(header_label):
                             c1, c2, _ = st.columns([1, 1, 3])
 
+                            # ✅ FIX 2: Pilih/Hapus Semua pakai ID_SISTEM dari df_group
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
-                                for k in df_group['ID_SISTEM']:
-                                    st.session_state['selected_items_dict'][k] = True
+                                for idx, row in df_group.iterrows():
+                                    st.session_state['selected_items_dict'][row['ID_SISTEM']] = True
+                                    st.session_state[f"chk_{row['ID_SISTEM']}"] = True
                                 st.rerun()
 
                             if c2.button("🗑️ Hapus Semua", key=f"none_btn_{pr_no}"):
-                                for k in df_group['ID_SISTEM']:
-                                    st.session_state['selected_items_dict'][k] = False
+                                for idx, row in df_group.iterrows():
+                                    st.session_state['selected_items_dict'][row['ID_SISTEM']] = False
+                                    st.session_state[f"chk_{row['ID_SISTEM']}"] = False
                                 st.rerun()
 
                             h1, h2, h3, h4, h5 = st.columns([0.5, 3, 3, 1, 1])
@@ -233,43 +230,52 @@ def admin_portal():
                             h4.markdown("**Qty**")
                             h5.markdown("**UOM**")
 
-                           for idx, item_row in df_group.iterrows():
-                                # Buat Key untuk identifikasi baris di UI
-                                row_key = f"{pr_no}_{item_row['index']}"
-                                match_key = create_match_key(pr_no, item_row.get('DESCRIPTION', ''), item_row.get('DESCRIPTION 2', ''))
-                                
-                                is_published = match_key in already_published_keys
-                                bg_color = "#d1fae5" if is_published else "transparent" # Warna hijau muda jika sudah dipublish
-                                
-                                # Render Baris dengan Style
-                                container = st.container()
-                                with container:
-                                    # Gunakan HTML/CSS minimal untuk warna background per baris
-                                    st.markdown(
-                                        f"""<div style="background-color:{bg_color}; padding:5px; border-radius:5px; margin-bottom:2px;">""", 
-                                        unsafe_allow_html=True
-                                    )
-                                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 3, 3, 1, 1, 1.5])
-                                    
-                                    widget_key = f"chk_{row_key}"
-                                    c1.checkbox("select", key=widget_key, 
-                                                value=st.session_state['selected_items_dict'].get(row_key, False),
-                                                on_change=sync_checkbox, args=(row_key, widget_key),
-                                                label_visibility="collapsed")
-                                    
-                                    c2.write(item_row.get('DESCRIPTION', ''))
-                                    c3.write(item_row.get('DESCRIPTION 2', ''))
-                                    c4.write(item_row.get('QUANTITY', ''))
-                                    c5.write(item_row.get('UOM', ''))
-                                    
+                            # ✅ FIX 3: Gunakan ID_SISTEM sebagai key, iterrows() yang benar
+                            for idx, item_row in df_group.iterrows():
+                                id_sistem = item_row['ID_SISTEM']
+                                widget_key = f"chk_{id_sistem}"
 
-                # --- LANGKAH 2 (Review) ---
+                                match_key = create_match_key(
+                                    pr_no,
+                                    item_row.get('DESCRIPTION', ''),
+                                    item_row.get('DESCRIPTION 2', '')
+                                )
+                                is_published = match_key in already_published_keys
+                                bg_color = "#d1fae5" if is_published else "transparent"
+
+                                st.markdown(
+                                    f'<div style="background-color:{bg_color}; padding:5px; '
+                                    f'border-radius:5px; margin-bottom:2px;">',
+                                    unsafe_allow_html=True
+                                )
+
+                                col1, col2, col3, col4, col5 = st.columns([0.5, 3, 3, 1, 1])
+
+                                # ✅ FIX 4: on_change closure yang benar
+                                def make_on_change(k, wk):
+                                    def on_change():
+                                        st.session_state['selected_items_dict'][k] = st.session_state[wk]
+                                    return on_change
+
+                                col1.checkbox(
+                                    label="select",
+                                    value=st.session_state['selected_items_dict'].get(id_sistem, False),
+                                    key=widget_key,
+                                    label_visibility="collapsed",
+                                    on_change=make_on_change(id_sistem, widget_key)
+                                )
+                                col2.write(item_row.get('DESCRIPTION', ''))
+                                col3.write(item_row.get('DESCRIPTION 2', ''))
+                                col4.write(item_row.get('QUANTITY', ''))
+                                col5.write(item_row.get('UOM', ''))
+
+                                st.markdown('</div>', unsafe_allow_html=True)
+
+                # --- LANGKAH 2 ---
                 st.divider()
                 st.subheader("🎯 Review & Assign Vendor")
-                
+
                 selected_keys = [k for k, v in st.session_state['selected_items_dict'].items() if v]
-                
-                # Filter final_items pakai ID_SISTEM (Kolom NO)
                 final_items = df_display[df_display['ID_SISTEM'].isin(selected_keys)].copy()
 
                 if not final_items.empty:
@@ -282,9 +288,9 @@ def admin_portal():
                         if st.button("🚨 Reset Semua Pilihan"):
                             st.session_state['selected_items_dict'] = {}
                             for k in list(st.session_state.keys()):
-                                if k.startswith("chk_"): del st.session_state[k]
+                                if k.startswith("chk_"):
+                                    del st.session_state[k]
                             st.rerun()
-                    
 
                     df_u = get_data("Users")
                     vendors = df_u[df_u['role'] == 'vendor']['vendor_name'].tolist() if not df_u.empty else []
@@ -294,16 +300,15 @@ def admin_portal():
                         if not sel_v:
                             st.error("Silakan pilih minimal satu vendor.")
                         else:
-                            # Logika simpan GSheet bisa ditaruh di sini
                             st.success("✅ Berhasil! RFQ telah dipublish.")
                             st.session_state['selected_items_dict'] = {}
                             for k in list(st.session_state.keys()):
-                                if k.startswith("chk_"): del st.session_state[k]
+                                if k.startswith("chk_"):
+                                    del st.session_state[k]
                             st.rerun()
                 else:
                     st.warning("Belum ada item yang dipilih dari Langkah 1.")
 
-    # --- TAB LAINNYA ---
     with tabs[1]:
         st.header("Price Comparison Analysis")
         df_prices = get_data("Price_Goods")
@@ -311,23 +316,35 @@ def admin_portal():
             st.info("Belum ada penawaran masuk dari vendor.")
         else:
             df_master = get_data("Master_Items")
-            df_merged = pd.merge(df_prices, df_master[['id_unique', 'item_name', 'specification', 'qty', 'uom']], on='id_unique', how='left')
+            df_merged = pd.merge(
+                df_prices,
+                df_master[['id_unique', 'item_name', 'specification', 'qty', 'uom']],
+                on='id_unique', how='left'
+            )
             if 'pr_number' in df_merged.columns:
                 pr_list = df_merged['pr_number'].unique()
                 sel_pr = st.selectbox("Pilih Nomor PR:", pr_list)
                 sub_comp = df_merged[df_merged['pr_number'] == sel_pr]
-                pivot_df = sub_comp.pivot_table(index=['item_name', 'specification', 'qty', 'uom'], columns='vendor_email', values='unit_price', aggfunc='min').reset_index()
+                pivot_df = sub_comp.pivot_table(
+                    index=['item_name', 'specification', 'qty', 'uom'],
+                    columns='vendor_email', values='unit_price', aggfunc='min'
+                ).reset_index()
                 st.write(f"### Perbandingan Harga PR: {sel_pr}")
                 identitas_cols = ['item_name', 'specification', 'qty', 'uom']
                 harga_cols = [c for c in pivot_df.columns if c not in identitas_cols]
                 if harga_cols:
-                    st.dataframe(pivot_df.style.highlight_min(axis=1, color='#d1fae5', subset=harga_cols), use_container_width=True)
+                    st.dataframe(
+                        pivot_df.style.highlight_min(axis=1, color='#d1fae5', subset=harga_cols),
+                        use_container_width=True
+                    )
                 else:
                     st.dataframe(pivot_df, use_container_width=True)
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     pivot_df.to_excel(writer, index=False)
-                st.download_button("📥 Download Report Excel", output.getvalue(), f"Comparison_{sel_pr}.xlsx")
+                st.download_button(
+                    "📥 Download Report Excel", output.getvalue(), f"Comparison_{sel_pr}.xlsx"
+                )
 
 def vendor_portal(email):
     st.header("📝 Form Penawaran Harga")
@@ -345,12 +362,18 @@ def vendor_portal(email):
             sub_items['Unit_Price'] = 0.0
             sub_items['Brand'] = "-"
             sub_items['Lead_Time_Days'] = 7
-            edited = st.data_editor(sub_items, key=f"edit_{pr}", hide_index=True, use_container_width=True, disabled=display_cols)
+            edited = st.data_editor(
+                sub_items, key=f"edit_{pr}", hide_index=True,
+                use_container_width=True, disabled=display_cols
+            )
             if st.button(f"Kirim Penawaran PR {pr}", key=f"save_{pr}"):
                 price_rows = []
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 for _, r in edited.iterrows():
-                    price_rows.append([f"P-{uuid.uuid4().hex[:6]}", pr, email, r['id_unique'], r['Unit_Price'], r['Brand'], r['Lead_Time_Days'], ts, "Open"])
+                    price_rows.append([
+                        f"P-{uuid.uuid4().hex[:6]}", pr, email, r['id_unique'],
+                        r['Unit_Price'], r['Brand'], r['Lead_Time_Days'], ts, "Open"
+                    ])
                 if batch_save_data("Price_Goods", price_rows):
                     st.success("Berhasil mengirim penawaran!")
 
