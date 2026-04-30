@@ -311,6 +311,7 @@ def admin_portal():
                                     i_name = str(item['DESCRIPTION'])
                                     i_spec = str(item.get('DESCRIPTION 2',''))
                                     loc = str(item.get('LOCATION',''))
+                                    qty = 
                                     
                                     # ID Unique untuk Master (Kunci Utama)
                                     id_unique = create_match_key(pr_no, i_name, i_spec)
