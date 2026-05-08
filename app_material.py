@@ -206,6 +206,16 @@ def admin_portal():
                         df_to_show['DESCRIPTION'].astype(str).str.lower().str.contains(q, regex=False, na=False)
                     )
                     df_to_show = df_to_show[mask]
+                if 'expand_all' not in st.session_state:
+                st.session_state['expand_all'] = False
+
+                col_exp, _ = st.columns([1, 4])
+                if col_exp.button(
+                    "📂 Collapse All" if st.session_state['expand_all'] else "📂 Expand All",
+                    use_container_width=True
+                ):
+                    st.session_state['expand_all'] = not st.session_state['expand_all']
+                    st.rerun()
 
                 with st.container(height=550, border=True):
                     for pr_no in df_to_show['PR CODE'].unique():
@@ -219,7 +229,7 @@ def admin_portal():
                         else:
                             header_label = f"📄 PR: {pr_no} | 📍 {loc}"
                         
-                        with st.expander(header_label):
+                        with st.expander(header_label, expanded=st.session_state['expand_all']):
                             c1, c2, _ = st.columns([1, 1, 3])
 
                             if c1.button("✅ Pilih Semua", key=f"all_btn_{pr_no}"):
