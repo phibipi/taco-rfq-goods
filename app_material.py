@@ -207,7 +207,7 @@ def admin_portal():
                     )
                     df_to_show = df_to_show[mask]
                 if 'expand_all' not in st.session_state:
-                st.session_state['expand_all'] = False
+                    st.session_state['expand_all'] = False
 
                 col_exp, _ = st.columns([1, 4])
                 if col_exp.button(
