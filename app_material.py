@@ -176,7 +176,12 @@ def admin_portal():
             # Baca Excel, header ada di baris ke-3 (index 2)
             df_raw = pd.read_excel(uploaded_file, header=2)
             df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
-            df_raw['ID_SISTEM'] = df_raw.apply(lambda row: create_match_key(row.get('PR CODE', ''), row.get('DESCRIPTION', ''), row.get('DESCRIPTION 2', '')), axis=1)   
+            df_raw = df_raw.reset_index(drop=True)
+            df_raw['ID_SISTEM'] = df_raw.apply(
+                lambda row: create_match_key(row.get('PR CODE', ''), row.get('DESCRIPTION', ''), row.get('DESCRIPTION 2', '')) 
+                            + f"_{row.name}",  # row.name = index angka
+                axis=1
+            ) 
 
             if 'selected_items_dict' not in st.session_state:
                 st.session_state['selected_items_dict'] = {}
